@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Oxformals",
+    "slug": "oxformals",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.jpg",
+    "scheme": "oxformalsmobile",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/icon.jpg",
+      "bundleIdentifier": "com.nobelsu.oxformals-mobile",
+      "appleTeamId": "XL5JK4F896",
+      "entitlements": {
+        "aps-environment": "development"
+      },
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Oxformals needs access to your photos so you can choose a profile picture or menu image.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.nobelsu.oxformalsmobile"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b59e9c34-3826-4d1d-a57e-20f41fe4ef40"
+      },
+      "router": {}
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f2ead8"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Oxformals needs access to your photos so you can choose a profile picture or menu image."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#E6F4FE",
+          "defaultChannel": "chat",
+          "sounds": []
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true,
+      "tsconfigPaths": true
+    },
+    "owner": "nobelsu"
+  }
+}
