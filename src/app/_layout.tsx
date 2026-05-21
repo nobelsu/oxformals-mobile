@@ -6,6 +6,8 @@ import { DataProvider } from "@/src/components/data/DataProvider";
 import { SplashProvider } from "@/src/contexts/SplashContext";
 import { ThemeProvider, useOxTheme } from "@/src/contexts/ThemeContext";
 import { OxBackButton } from "@/src/components/ui/OxBackButton";
+import { OxStackHeaderTitle } from "@/src/components/ui/OxStackHeaderTitle";
+import { space } from "@/src/constants/spacing";
 import { HandwritingSplash } from "@/src/components/splash/HandwritingSplash";
 import { Schoolbell_400Regular } from "@expo-google-fonts/schoolbell";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
@@ -17,12 +19,16 @@ import { Platform, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootStack() {
   const { colors } = useOxTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Stack
@@ -50,8 +56,17 @@ function RootStack() {
                   : [],
             }
           : {
+              headerTitleAlign: "left",
+              headerStatusBarHeight: insets.top,
               headerLeft: ({ canGoBack }) =>
                 canGoBack ? <OxBackButton /> : undefined,
+              headerLeftContainerStyle: {
+                paddingLeft: space[2],
+                paddingRight: space[2],
+              },
+              headerTitle: ({ children }) => (
+                <OxStackHeaderTitle>{children}</OxStackHeaderTitle>
+              ),
             }),
         contentStyle: { backgroundColor: colors.bg },
       }}

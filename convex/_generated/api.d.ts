@@ -10,6 +10,7 @@
 
 import type * as AdminEmail from "../AdminEmail.js";
 import type * as ResendOTP from "../ResendOTP.js";
+import type * as TestEmail from "../TestEmail.js";
 import type * as adminReset from "../adminReset.js";
 import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
@@ -23,6 +24,7 @@ import type * as listingHelpers from "../listingHelpers.js";
 import type * as listings from "../listings.js";
 import type * as pushNotifications from "../pushNotifications.js";
 import type * as storage from "../storage.js";
+import type * as testAuth from "../testAuth.js";
 import type * as uiFont from "../uiFont.js";
 import type * as userVerification from "../userVerification.js";
 import type * as users from "../users.js";
@@ -36,6 +38,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   AdminEmail: typeof AdminEmail;
   ResendOTP: typeof ResendOTP;
+  TestEmail: typeof TestEmail;
   adminReset: typeof adminReset;
   auth: typeof auth;
   chat: typeof chat;
@@ -49,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   listings: typeof listings;
   pushNotifications: typeof pushNotifications;
   storage: typeof storage;
+  testAuth: typeof testAuth;
   uiFont: typeof uiFont;
   userVerification: typeof userVerification;
   users: typeof users;

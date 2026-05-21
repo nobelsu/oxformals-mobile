@@ -41,6 +41,23 @@ Chat message pushes require a **development or production build** on a physical 
 
 Until `projectId` is set, the app skips token registration without crashing.
 
+### Test account (dev only)
+
+For local testing without checking email, set a fixed OTP on your **dev** Convex deployment only (never production):
+
+```bash
+npx convex env set AUTH_TEST_EMAIL test@ox.ac.uk
+npx convex env set AUTH_TEST_OTP 000000
+```
+
+In `.env.local`, match the test email so the app routes to the `test-email` provider:
+
+```
+EXPO_PUBLIC_AUTH_TEST_EMAIL=test@ox.ac.uk
+```
+
+Then sign in with `test@ox.ac.uk` and the fixed 6-digit code (`000000` above). No email is sent. Complete the profile step on first sign-in if needed.
+
 ## Features
 
 - **Browse** — public listing feed with college/search filters

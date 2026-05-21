@@ -44,6 +44,7 @@ const styles = StyleSheet.create({
   pressable: {
     alignSelf: "flex-start",
     marginLeft: space[1],
+    marginRight: space[4],
   },
   inner: {
     paddingVertical: space[1],

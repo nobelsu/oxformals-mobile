@@ -13,6 +13,7 @@ import {
 
 type Status = "hydrating" | "ready";
 const ADMIN_EMAIL = "admin@ox.ac.uk";
+const TEST_AUTH_EMAIL = process.env.EXPO_PUBLIC_AUTH_TEST_EMAIL?.trim().toLowerCase();
 
 function profileComplete(doc: Doc<"users"> | null | undefined): boolean {
   if (!doc) return false;
@@ -113,6 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const trimmed = email.trim();
       const normalizedEmail = trimmed.toLowerCase();
       const params = { email: trimmed };
+      if (TEST_AUTH_EMAIL && normalizedEmail === TEST_AUTH_EMAIL) {
+        await signInWithProvider("test-email", params);
+        return { status: "code-sent" as const, email: normalizedEmail };
+      }
       if (normalizedEmail === ADMIN_EMAIL) {
         await signInWithProvider("admin-email", params);
         return { status: "code-sent" as const, email: normalizedEmail };
@@ -128,6 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const trimmedEmail = email.trim();
       const normalizedEmail = trimmedEmail.toLowerCase();
       const params = { email: trimmedEmail, code: code.trim() };
+      if (TEST_AUTH_EMAIL && normalizedEmail === TEST_AUTH_EMAIL) {
+        await signInWithProvider("test-email", params);
+        return;
+      }
       if (normalizedEmail === ADMIN_EMAIL) {
         await signInWithProvider("admin-email", params);
         return;

@@ -18,7 +18,10 @@ import {
 import { useQuery } from "convex/react";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { SCREEN_PADDING } from "@/src/constants/layout";
+import {
+  SCREEN_PADDING,
+  STACK_HEADER_BACK_RESERVE,
+} from "@/src/constants/layout";
 
 function GroupChatHeader({
   conversation,
@@ -31,7 +34,7 @@ function GroupChatHeader({
   const { width: screenWidth } = useWindowDimensions();
   const displayTitle = conversation.name ?? conversation.title;
   // Native stack has no headerTitleContainerStyle; reserve space for back button.
-  const headerWidth = screenWidth - 104;
+  const headerWidth = screenWidth - STACK_HEADER_BACK_RESERVE;
 
   return (
     <Pressable
@@ -80,7 +83,7 @@ function DmChatHeader({
 }) {
   const { colors } = useOxTheme();
   const { width: screenWidth } = useWindowDimensions();
-  const headerWidth = screenWidth - 104;
+  const headerWidth = screenWidth - STACK_HEADER_BACK_RESERVE;
 
   return (
     <Pressable

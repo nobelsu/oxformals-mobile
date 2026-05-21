@@ -12,6 +12,9 @@ export const TAB_SCREEN_TITLE_PADDING_TOP = 0;
 
 export const SCREEN_PADDING = 16;
 
+/** Native stack header: horizontal space for OxBackButton + trailing gap (Android). */
+export const STACK_HEADER_BACK_RESERVE = 120;
+
 /** Max width for chat bubbles as a fraction of the thread content area. */
 export const CHAT_BUBBLE_WIDTH_RATIO = 0.78;
 

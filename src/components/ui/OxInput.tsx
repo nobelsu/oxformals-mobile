@@ -142,6 +142,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
     fontSize: 17,
     fontFamily: FONT_DISPLAY,
+    letterSpacing: 0,
     width: "100%",
   },
   inputBare: {

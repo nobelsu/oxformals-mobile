@@ -1,10 +1,10 @@
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { GroupMembersManager } from "@/src/components/chat/GroupMembersManager";
 import { chatText } from "@/src/components/chat/chatText";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
-import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { SCREEN_PADDING } from "@/src/constants/layout";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { chatConversationHref } from "@/src/lib/chat/navigation";
 import { isGroupConversation } from "@/src/lib/chat/types";
 import { useQuery } from "convex/react";
