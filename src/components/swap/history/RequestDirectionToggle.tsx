@@ -76,7 +76,6 @@ export function RequestDirectionToggle({ value, onChange }: Props) {
       seed={TRACK_SEED}
       stroke={colors.ink}
       fill={colors.bg}
-      dashed
       style={styles.root}
       contentStyle={styles.trackContent}
     >
@@ -98,7 +97,6 @@ export function RequestDirectionToggle({ value, onChange }: Props) {
               seed={INDICATOR_SEED}
               fill={colors.accent}
               stroke={colors.accent}
-              dashed={false}
               style={styles.indicatorDoodle}
             >
               <View style={styles.indicatorSpacer} />

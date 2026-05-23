@@ -29,7 +29,6 @@ export function OxBackButton({ label = "Back" }: Props) {
         seed={7}
         fill={colors.paper}
         stroke={colors.ink}
-        dashed
         contentStyle={styles.inner}
       >
         <Text style={[styles.text, { color: colors.ink, fontFamily: FONT_DISPLAY }]}>

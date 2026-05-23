@@ -65,8 +65,8 @@ export function DoodleSendButton({
       <DoodleOutline
         seed={seed}
         fill={fill}
-        stroke={colors.ink}
-        dashed={!active}
+        stroke={active ? colors.ink : colors.inkMuted}
+        dashed={false}
         contentStyle={[styles.content, { width: size, height: size }]}
       >
         <View style={styles.iconWrap}>

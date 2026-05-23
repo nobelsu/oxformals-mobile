@@ -58,7 +58,6 @@ export function DoodleScrollDownButton({
         seed={seed}
         fill={colors.paper}
         stroke={colors.ink}
-        dashed
         elevated
         contentStyle={[styles.content, { width: size, height: size }]}
       >

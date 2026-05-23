@@ -1,6 +1,8 @@
+import { compressImage } from "@/src/lib/media/compressImage";
 import { openPhotoLibrary } from "@/src/lib/media/openPhotoLibrary";
 
 import {
+  MENU_FILE_MAX_BYTES,
   type MenuFileAsset,
   validateMenuFileAsset,
 } from "@/src/lib/upload/menuFileMobile";
@@ -25,26 +27,33 @@ export async function pickMenuImageFromLibrary(): Promise<PickMenuImageResult> {
   }
 
   const { result } = launch;
-  if (result.canceled || !result.assets[0]) {
+  if (result.canceled || !result.assets[0]?.uri) {
     return { ok: false, reason: "cancelled" };
   }
 
   const asset = result.assets[0];
-  const menuAsset: MenuFileAsset = {
-    uri: asset.uri,
-    name: asset.fileName ?? "menu.jpg",
-    mimeType: asset.mimeType ?? "image/jpeg",
-    size: asset.fileSize ?? 0,
-  };
 
-  const validationError = validateMenuFileAsset(menuAsset);
-  if (validationError) {
-    return { ok: false, reason: "invalid", message: validationError };
-  }
+  try {
+    const compressed = await compressImage(asset.uri, {
+      maxWidth: 2048,
+      quality: 0.85,
+      maxBytes: MENU_FILE_MAX_BYTES,
+    });
 
-  if (!menuAsset.uri) {
+    const menuAsset: MenuFileAsset = {
+      uri: compressed.uri,
+      name: asset.fileName?.replace(/\.\w+$/i, ".jpg") ?? "menu.jpg",
+      mimeType: "image/jpeg",
+      size: compressed.size,
+    };
+
+    const validationError = validateMenuFileAsset(menuAsset);
+    if (validationError) {
+      return { ok: false, reason: "invalid", message: validationError };
+    }
+
+    return { ok: true, asset: menuAsset };
+  } catch {
     return { ok: false, reason: "failed" };
   }
-
-  return { ok: true, asset: menuAsset };
 }

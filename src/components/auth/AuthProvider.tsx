@@ -185,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (
       patch: Partial<Omit<User, "id" | "email">>,
     ): Promise<User | null> => {
-      if (!user) return null;
+      if (status !== "ready" || !jwtAuthenticated || !user) return null;
 
       const payload: {
         name?: string;
@@ -227,7 +227,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (Object.keys(payload).length === 0) return user;
 
-      await patchProfileMut(payload);
+      try {
+        await patchProfileMut(payload);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.toLowerCase().includes("not authenticated")
+        ) {
+          return null;
+        }
+        throw error;
+      }
 
       return {
         ...user,
@@ -241,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           patch.emailWishlistAlerts ?? user.emailWishlistAlerts,
       };
     },
-    [user, patchProfileMut],
+    [status, jwtAuthenticated, user, patchProfileMut],
   );
 
   const agreeToRules = useCallback(async () => {

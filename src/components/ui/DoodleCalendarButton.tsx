@@ -49,7 +49,6 @@ export function DoodleCalendarButton({
         seed={seed}
         fill={colors.paper}
         stroke={colors.ink}
-        dashed
         contentStyle={[styles.content, { width: size, height: size }]}
       >
         <View style={styles.iconWrap}>

@@ -10,6 +10,9 @@ export type NewListingInput = Pick<
   clearMenuPdf?: boolean;
 };
 
+/** Same fields as create; used when saving listing edits. */
+export type UpdateListingInput = NewListingInput;
+
 export const dataClient = {
   _reset(): void {
     // Test helper placeholder

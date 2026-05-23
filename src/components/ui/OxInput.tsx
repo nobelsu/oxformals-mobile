@@ -67,7 +67,9 @@ export const OxInput = forwardRef<TextInput | GestureTextInput, Props>(
   const seed = seedProp ?? inputSeed(
     typeof props.placeholder === "string" ? props.placeholder : undefined,
   );
-  const stroke = focused ? (focusStroke ?? colors.ink) : colors.ink;
+  const stroke = focused
+    ? (focusStroke ?? colors.ink)
+    : colors.inkMuted;
   const selectionColor = focusStroke ?? colors.accent;
   const caretColor = focused ? selectionColor : colors.ink;
 
@@ -113,7 +115,7 @@ export const OxInput = forwardRef<TextInput | GestureTextInput, Props>(
       seed={seed}
       fill={colors.paper}
       stroke={stroke}
-      dashed={!focused}
+      dashed={false}
       focused={focused}
       elevated={focused}
       style={wrapperStyle}

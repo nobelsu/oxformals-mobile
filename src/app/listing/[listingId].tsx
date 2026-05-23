@@ -12,7 +12,9 @@ import {
   incomingRequestsForListing,
   pendingIncomingRequestsForListing,
 } from "@/src/lib/data/requestFilters";
+import { canEditListing } from "@/src/lib/data/listingEdit";
 import { listingRequestCta } from "@/src/lib/data/listingType";
+import { oxText } from "@/src/constants/oxText";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { OxText } from "@/src/components/ui/OxText";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -70,6 +72,10 @@ export default function ListingDetailScreen() {
     isAuthenticated &&
     listing.status === "active" &&
     listing.seatsAvailable > 0;
+
+  const canEdit = isOwner && canEditListing(listing, pending.length);
+  const showEditBlockedNote =
+    isOwner && pending.length > 0 && listing.status !== "expired";
 
   const activeListingId = listing.id;
 
@@ -158,6 +164,24 @@ export default function ListingDetailScreen() {
                 </SketchCard>
               );
             })}
+            {canEdit ? (
+              <OxButton
+                title="Edit listing"
+                variant="secondary"
+                onPress={() => router.push(`/listing/${listing.id}/edit`)}
+                style={{ marginTop: 16 }}
+              />
+            ) : null}
+            {showEditBlockedNote ? (
+              <OxText
+                style={[
+                  oxText,
+                  { color: colors.inkMuted, marginTop: canEdit ? 8 : 16 },
+                ]}
+              >
+                Resolve pending requests before editing.
+              </OxText>
+            ) : null}
             <OxButton
               title="Delete listing"
               variant="danger"

@@ -96,7 +96,6 @@ export function PickerField({
           seed={seed}
           fill={colors.paper}
           stroke={colors.ink}
-          dashed
           contentStyle={profileFieldStyles.pickerInner}
         >
           <Text

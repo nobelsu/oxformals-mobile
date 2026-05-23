@@ -24,9 +24,10 @@ export function usePushNotificationActions(): PushContextValue {
 }
 
 export function PushNotificationProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, status } = useAuth();
+  const pushSyncReady = isAuthenticated && status === "ready";
   const { syncPushRegistration, disablePushNotifications } =
-    usePushNotifications(isAuthenticated);
+    usePushNotifications(pushSyncReady);
   useNotificationObserver();
 
   const value = useMemo(

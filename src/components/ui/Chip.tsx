@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text } from "react-native";
 type Props = {
   label: string;
   selected?: boolean;
+  disabled?: boolean;
   onPress?: () => void;
 };
 
@@ -15,20 +16,21 @@ function chipSeed(label: string): number {
   return Math.abs(h) || 2;
 }
 
-export function Chip({ label, selected, onPress }: Props) {
+export function Chip({ label, selected, disabled, onPress }: Props) {
   const { colors } = useOxTheme();
   const seed = chipSeed(label);
 
   return (
     <Pressable
-      onPress={onPress}
-      style={styles.wrap}
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      style={[styles.wrap, disabled && styles.disabled]}
     >
       <DoodleOutline
         seed={seed}
         fill={selected ? colors.accent : colors.bg}
         stroke={selected ? colors.accent : colors.ink}
-        dashed={!selected}
+        dashed={false}
         contentStyle={styles.inner}
       >
         <Text
@@ -49,6 +51,9 @@ const styles = StyleSheet.create({
   wrap: {
     marginRight: 8,
     marginBottom: 8,
+  },
+  disabled: {
+    opacity: 0.4,
   },
   inner: {
     paddingHorizontal: 12,

@@ -1,5 +1,6 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { claimStorageOwnership, deleteStorageAndOwnership } from "./uploadOwnership";
 
 const ALLOWED_MENU_FILE_TYPES = new Set([
   "application/pdf",
@@ -17,6 +18,7 @@ export type ListingWithMenuPdfUrl = Doc<"listings"> & {
 export async function validateMenuPdfId(
   ctx: MutationCtx,
   menuPdfId: Id<"_storage">,
+  ownerUserId: Id<"users">,
 ): Promise<void> {
   const metadata = await ctx.db.system.get("_storage", menuPdfId);
   if (!metadata) {
@@ -28,6 +30,7 @@ export async function validateMenuPdfId(
   ) {
     throw new Error("Menu file must be a PDF or image (JPEG, PNG, WebP, or GIF).");
   }
+  await claimStorageOwnership(ctx, menuPdfId, ownerUserId);
 }
 
 export async function deleteMenuPdfIfPresent(
@@ -35,7 +38,7 @@ export async function deleteMenuPdfIfPresent(
   menuPdfId: Id<"_storage"> | undefined,
 ): Promise<void> {
   if (menuPdfId) {
-    await ctx.storage.delete(menuPdfId);
+    await deleteStorageAndOwnership(ctx, menuPdfId);
   }
 }
 

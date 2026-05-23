@@ -1,3 +1,4 @@
+import { ensureChatNotificationCategory } from "@/src/lib/push/chatNotificationCategory";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -57,6 +58,8 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
   if (finalStatus !== "granted") {
     return { status: "denied" };
   }
+
+  await ensureChatNotificationCategory();
 
   try {
     const tokenResponse = await Notifications.getExpoPushTokenAsync({

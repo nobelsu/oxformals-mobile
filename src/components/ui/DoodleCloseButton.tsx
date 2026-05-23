@@ -106,7 +106,6 @@ export function DoodleCloseButton({
         seed={seed}
         fill={colors.paper}
         stroke={colors.ink}
-        dashed
         contentStyle={{ ...styles.content, width: size, height: size }}
       >
         {icon}

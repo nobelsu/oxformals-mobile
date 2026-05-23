@@ -32,7 +32,7 @@ export function DoodleOutline({
   seed = 1,
   fill = "transparent",
   stroke,
-  dashed = true,
+  dashed = false,
   focused = false,
   elevated = false,
   style,

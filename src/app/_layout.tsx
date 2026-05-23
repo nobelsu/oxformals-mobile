@@ -77,6 +77,10 @@ function RootStack() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="listing/[listingId]" />
       <Stack.Screen
+        name="listing/[listingId]/edit"
+        options={{ headerShown: true, title: "Edit listing" }}
+      />
+      <Stack.Screen
         name="history/past-listings"
         options={{ headerShown: true }}
       />

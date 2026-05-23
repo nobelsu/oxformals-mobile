@@ -19,7 +19,7 @@ type Props = PressableProps & {
   variant?: Variant;
   loading?: boolean;
   seed?: number;
-  /** Hand-drawn dashed border; defaults to true for secondary. */
+  /** Hand-drawn dashed border; defaults to false. */
   dashed?: boolean;
   /** Fills AuthFormBlock action slot — no outer doodle border. */
   bare?: boolean;
@@ -45,7 +45,7 @@ export function OxButton({
   const { colors } = useOxTheme();
   const isDisabled = disabled || loading;
   const seed = seedProp ?? labelSeed(title);
-  const dashed = dashedProp ?? variant === "secondary";
+  const dashed = dashedProp ?? false;
 
   const bg =
     variant === "primary"

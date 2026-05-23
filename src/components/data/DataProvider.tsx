@@ -4,11 +4,12 @@ import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { DEFAULT_UI_FONT } from "@/src/lib/uiFont";
 import type { User } from "@/src/lib/auth/types";
 import { normalizeCollegeName } from "@/src/lib/data/colleges";
-import { type NewListingInput } from "@/src/lib/data/dataClient";
+import {
+  type NewListingInput,
+  type UpdateListingInput,
+} from "@/src/lib/data/dataClient";
 import type {
-  GroupSize,
   Listing,
-  ListingType,
   RequestType,
   SwapRequest,
 } from "@/src/lib/data/types";
@@ -16,7 +17,6 @@ import { useMutation, useQuery } from "convex/react";
 import {
   createContext,
   useCallback,
-  useEffect,
   useMemo,
   type ReactNode,
 } from "react";
@@ -47,17 +47,8 @@ export type DataContextValue = {
   withdrawRequest: (requestId: string) => boolean;
   updateListing: (
     listingId: string,
-    patch: {
-      dateTime?: string;
-      groupSize?: GroupSize;
-      message?: string;
-      menu?: string;
-      menuPdfId?: string;
-      clearMenuPdf?: boolean;
-      listingType?: ListingType;
-      price?: number;
-    },
-  ) => void;
+    patch: UpdateListingInput,
+  ) => Promise<void>;
   deleteListing: (listingId: string) => void;
   leaveGroup: (listingId: string) => void;
   removeMember: (listingId: string, memberId: string) => void;
@@ -66,7 +57,22 @@ export type DataContextValue = {
 
 export const DataContext = createContext<DataContextValue | null>(null);
 
-function mapUser(doc: Doc<"users">): User {
+type PublicUserDoc = {
+  _id: Id<"users">;
+  name?: string;
+  email?: string;
+  college?: string;
+  year?: string;
+  role?: string;
+  interests?: string[];
+  subject?: string;
+  uiFont?: Doc<"users">["uiFont"];
+  instagramHandle?: string;
+  whatsappPhone?: string;
+  avatar?: Doc<"users">["avatar"];
+};
+
+function mapUser(doc: PublicUserDoc): User {
   return {
     id: doc._id,
     email: doc.email ?? "",
@@ -176,17 +182,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteListingMut = useMutation(api.listings.deleteListing);
   const leaveGroupMut = useMutation(api.listings.leaveGroup);
   const removeMemberMut = useMutation(api.listings.removeMember);
-  const syncExpiredListingsMut = useMutation(api.listings.syncExpiredListings);
   const saveWishlistMut = useMutation(api.users.saveWishlistColleges);
   const getOrCreateConversationMut = useMutation(
     api.chat.getOrCreateConversation,
   );
   const sendChatMessageMut = useMutation(api.chat.sendMessage);
-
-  useEffect(() => {
-    if (!user) return;
-    void syncExpiredListingsMut({});
-  }, [user, syncExpiredListingsMut]);
 
   const users = useMemo<User[]>(() => {
     if (!ready || convexUsers === undefined) return [];
@@ -392,36 +392,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateListing = useCallback(
-    (
-      listingId: string,
-      patch: {
-        dateTime?: string;
-        groupSize?: GroupSize;
-        message?: string;
-        menu?: string;
-        menuPdfId?: string;
-        clearMenuPdf?: boolean;
-        listingType?: ListingType;
-        price?: number;
-      },
-    ) => {
-      if (!user) return;
-      void updateListingMut({
-        listingId: listingId as Id<"listings">,
-        ...(patch.dateTime !== undefined ? { dateTime: patch.dateTime } : {}),
-        ...(patch.groupSize !== undefined ? { groupSize: patch.groupSize } : {}),
-        ...(patch.message !== undefined ? { message: patch.message } : {}),
-        ...(patch.menu !== undefined ? { menu: patch.menu } : {}),
-        ...(patch.clearMenuPdf
-          ? { menuPdfId: null }
-          : patch.menuPdfId !== undefined
-            ? { menuPdfId: patch.menuPdfId as Id<"_storage"> }
-            : {}),
-        ...(patch.listingType !== undefined
-          ? { listingType: patch.listingType }
-          : {}),
-        ...(patch.price !== undefined ? { price: patch.price } : {}),
-      });
+    async (listingId: string, patch: UpdateListingInput) => {
+      if (!user) {
+        throw new Error("You must be signed in to edit a listing.");
+      }
+      try {
+        await updateListingMut({
+          listingId: listingId as Id<"listings">,
+          dateTime: patch.dateTime,
+          groupSize: patch.groupSize,
+          message: patch.message,
+          menu: patch.menu,
+          ...(patch.clearMenuPdf
+            ? { menuPdfId: null }
+            : patch.menuPdfId !== undefined
+              ? { menuPdfId: patch.menuPdfId as Id<"_storage"> }
+              : {}),
+          listingType: patch.listingType,
+          ...(patch.price !== undefined ? { price: patch.price } : {}),
+        });
+      } catch (e) {
+        throw new Error(
+          e instanceof Error ? e.message : "Could not update listing.",
+        );
+      }
     },
     [user, updateListingMut],
   );

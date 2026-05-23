@@ -37,6 +37,10 @@ export async function uploadMenuFileMobile(
   const uploadUrl = await generateUploadUrl();
   const blob = await fetch(file.uri).then((r) => r.blob());
 
+  if (blob.size > MENU_FILE_MAX_BYTES) {
+    throw new Error("File must be 5 MB or smaller.");
+  }
+
   const result = await fetch(uploadUrl, {
     method: "POST",
     headers: { "Content-Type": file.mimeType },

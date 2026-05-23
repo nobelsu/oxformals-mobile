@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
+    "security:check": "node ./scripts/security-checks.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
@@ -26,6 +27,7 @@
     "expo-glass-effect": "~55.0.11",
     "expo-haptics": "~55.0.14",
     "expo-image": "~55.0.10",
+    "expo-image-manipulator": "~55.0.17",
     "expo-image-picker": "^55.0.20",
     "expo-linking": "~55.0.15",
     "expo-notifications": "~55.0.23",

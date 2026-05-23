@@ -30,6 +30,8 @@ export default defineSchema({
     dietaryRequirements: v.optional(v.string()),
     subject: v.optional(v.string()),
     wishlistColleges: v.optional(v.array(v.string())),
+    emailNotifications: v.optional(v.boolean()),
+    /** @deprecated Migrated to emailNotifications; kept for backfill reads only */
     emailWishlistAlerts: v.optional(v.boolean()),
     pushChatAlerts: v.optional(v.boolean()),
     agreedToRules: v.optional(v.boolean()),
@@ -67,6 +69,8 @@ export default defineSchema({
       v.union(v.literal("swap"), v.literal("pay"), v.literal("both")),
     ),
     price: v.optional(v.number()),
+    attendanceAppliedAt: v.optional(v.number()),
+    attendanceGuestCount: v.optional(v.number()),
   })
     .index("by_ownerUserId", ["ownerUserId"])
     .index("by_status", ["status"])
@@ -140,4 +144,69 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_token", ["token"]),
+  uploadedFiles: defineTable({
+    storageId: v.id("_storage"),
+    ownerUserId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_storageId", ["storageId"])
+    .index("by_ownerUserId", ["ownerUserId"]),
+  collegeReviews: defineTable({
+    userId: v.id("users"),
+    listingId: v.id("listings"),
+    college: v.string(),
+    ratings: v.object({
+      food: v.number(),
+      atmosphere: v.number(),
+      value: v.number(),
+      overall: v.number(),
+    }),
+    comment: v.optional(v.string()),
+    imageIds: v.optional(v.array(v.id("_storage"))),
+    isAnonymous: v.boolean(),
+    updatedAt: v.number(),
+    voteScore: v.optional(v.number()),
+  })
+    .index("by_listingId_and_userId", ["listingId", "userId"])
+    .index("by_college", ["college"])
+    .index("by_userId", ["userId"]),
+  collegeReviewVotes: defineTable({
+    reviewId: v.id("collegeReviews"),
+    userId: v.id("users"),
+    value: v.union(v.literal(1), v.literal(-1)),
+    updatedAt: v.number(),
+  })
+    .index("by_reviewId_and_userId", ["reviewId", "userId"])
+    .index("by_reviewId", ["reviewId"]),
+  collegeReviewReports: defineTable({
+    reviewId: v.id("collegeReviews"),
+    reporterUserId: v.id("users"),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_reviewId", ["reviewId"]),
+  collegeStats: defineTable({
+    college: v.string(),
+    reviewCount: v.number(),
+    ratingSums: v.object({
+      food: v.number(),
+      atmosphere: v.number(),
+      value: v.number(),
+      overall: v.number(),
+    }),
+    attendanceCount: v.number(),
+    completedFormalCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_college", ["college"]),
+  formalAttendanceConfirmations: defineTable({
+    listingId: v.id("listings"),
+    userId: v.id("users"),
+    confirmedAt: v.number(),
+    /** Omitted on legacy rows — treated as attended. */
+    attended: v.optional(v.boolean()),
+    reasonPreset: v.optional(v.string()),
+    reasonOther: v.optional(v.string()),
+  })
+    .index("by_listingId_and_userId", ["listingId", "userId"])
+    .index("by_userId", ["userId"])
+    .index("by_listingId", ["listingId"]),
 });

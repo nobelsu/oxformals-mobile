@@ -8,7 +8,6 @@ import {
 } from "@/src/components/auth/SignupProfileForm";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { Avatar, PRESET_AVATARS, PresetAvatarIcon } from "@/src/components/ui/Avatar";
-import { DoodleOutline } from "@/src/components/ui/DoodleOutline";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
 import { SketchCard } from "@/src/components/ui/SketchCard";
@@ -463,7 +462,7 @@ const styles = StyleSheet.create({
   divider: {
     borderBottomWidth: StyleSheet.hairlineWidth * 2,
     marginTop: space[5],
-    paddingBottom: space[5],
+    marginBottom: space[5],
   },
   interestsDivider: {
     marginTop: space[5],

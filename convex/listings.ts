@@ -6,6 +6,11 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { groupSizeValidator } from "./groupSize";
 import {
+  applyCompletedFormalForListing,
+  scheduleFormalCompletion,
+  syncListingAttendanceGuests,
+} from "./collegeStats";
+import {
   countReservedSwapsForOffering,
   declinePendingRequestsForListing,
   deleteMenuPdfIfPresent,
@@ -16,6 +21,8 @@ import {
   resolveStatusAfterEdit,
   validateMenuPdfId,
 } from "./listingHelpers";
+import { requireActiveUser } from "./guards";
+import { normalizeCollegeName } from "../lib/data/colleges";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -69,8 +76,7 @@ function listingSupportsSwap(
 }
 
 async function requireUserId(ctx: Ctx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Not authenticated");
+  const { userId } = await requireActiveUser(ctx);
   return userId;
 }
 
@@ -101,6 +107,23 @@ export const listMyListings = query({
       .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", userId))
       .order("desc")
       .take(200);
+    return Promise.all(listings.map((listing) => enrichListing(ctx, listing)));
+  },
+});
+
+export const listActiveListingsForCollege = query({
+  args: {
+    college: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const college = normalizeCollegeName(args.college);
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_college_and_status", (q) =>
+        q.eq("college", college).eq("status", "active"),
+      )
+      .order("desc")
+      .take(50);
     return Promise.all(listings.map((listing) => enrichListing(ctx, listing)));
   },
 });
@@ -161,7 +184,7 @@ export const createListing = mutation({
     validateListingTypeAndPrice(args.listingType, args.price);
 
     if (args.menuPdfId !== undefined) {
-      await validateMenuPdfId(ctx, args.menuPdfId);
+      await validateMenuPdfId(ctx, args.menuPdfId, userId);
     }
 
     const listingId = await ctx.db.insert("listings", {
@@ -192,6 +215,11 @@ export const createListing = mutation({
       internal.pushNotifications.sendWishlistListingPush,
       { listingId },
     );
+
+    const listing = await ctx.db.get(listingId);
+    if (listing) {
+      await scheduleFormalCompletion(ctx, listingId, listing.dateTime);
+    }
 
     return listingId;
   },
@@ -380,23 +408,60 @@ export const withdrawRequest = mutation({
   },
 });
 
+async function assertCanAcceptRequest(
+  ctx: MutationCtx,
+  req: Doc<"requests">,
+): Promise<{ target: Doc<"listings">; offering?: Doc<"listings"> }> {
+  const requestType = resolveRequestType(req);
+  const target = await getListingOrThrow(ctx, req.targetListingId);
+
+  if (target.status !== "active") {
+    throw new Error("Your listing is no longer active, so this request can't be accepted.");
+  }
+  if (listingIsPast(target.dateTime, Date.now())) {
+    throw new Error("This formal has passed, so this request can't be accepted.");
+  }
+  if (target.seatsAvailable <= 0) {
+    throw new Error(
+      "Your listing has no seats left, so this request can't be accepted.",
+    );
+  }
+
+  if (requestType === "pay") {
+    return { target };
+  }
+
+  if (!req.offeringListingId) {
+    throw new Error("Swap request is missing an offering listing.");
+  }
+
+  const offering = await getListingOrThrow(ctx, req.offeringListingId);
+  if (offering.status !== "active") {
+    throw new Error(
+      "Their offering listing is no longer active, so this swap can't be accepted.",
+    );
+  }
+  if (listingIsPast(offering.dateTime, Date.now())) {
+    throw new Error(
+      "Their offering formal has passed, so this swap can't be accepted.",
+    );
+  }
+  if (offering.seatsAvailable <= 0) {
+    throw new Error(
+      "Their offering listing has no seats left, so this swap can't be accepted.",
+    );
+  }
+
+  return { target, offering };
+}
+
 async function performAccept(
   ctx: MutationCtx,
   req: Doc<"requests">,
   skipIds: Id<"requests">[] = [],
 ) {
   const requestType = resolveRequestType(req);
-  const target = await getListingOrThrow(ctx, req.targetListingId);
-
-  if (target.status !== "active") {
-    throw new Error("Target listing is no longer active.");
-  }
-  if (listingIsPast(target.dateTime, Date.now())) {
-    throw new Error("This formal has passed.");
-  }
-  if (target.seatsAvailable <= 0) {
-    throw new Error("No seats available on target listing.");
-  }
+  const { target, offering } = await assertCanAcceptRequest(ctx, req);
 
   await ctx.db.patch(req._id, { status: "accepted" });
 
@@ -407,6 +472,11 @@ async function performAccept(
     members: newMembers,
     ...(newSeats === 0 ? { status: "closed" as const } : {}),
   });
+
+  const updatedTarget = await ctx.db.get(req.targetListingId);
+  if (updatedTarget) {
+    await syncListingAttendanceGuests(ctx, updatedTarget, Date.now());
+  }
 
   const idsToSkip = new Set([req._id, ...skipIds]);
 
@@ -423,23 +493,8 @@ async function performAccept(
     }
   }
 
-  if (requestType === "pay") {
+  if (requestType === "pay" || !offering || !req.offeringListingId) {
     return;
-  }
-
-  if (!req.offeringListingId) {
-    throw new Error("Swap request is missing an offering listing.");
-  }
-
-  const offering = await getListingOrThrow(ctx, req.offeringListingId);
-  if (offering.status !== "active") {
-    throw new Error("Offering listing is no longer active.");
-  }
-  if (listingIsPast(offering.dateTime, Date.now())) {
-    throw new Error("This formal has passed.");
-  }
-  if (offering.seatsAvailable <= 0) {
-    throw new Error("No seats available on offering listing.");
   }
 
   const newOfferingSeats = offering.seatsAvailable - 1;
@@ -449,6 +504,11 @@ async function performAccept(
     members: newOfferingMembers,
     ...(newOfferingSeats === 0 ? { status: "confirmed" as const } : {}),
   });
+
+  const updatedOffering = await ctx.db.get(req.offeringListingId);
+  if (updatedOffering) {
+    await syncListingAttendanceGuests(ctx, updatedOffering, Date.now());
+  }
 
   if (newOfferingSeats === 0) {
     const pendingForOffering = await ctx.db
@@ -505,6 +565,11 @@ export const leaveGroup = mutation({
       ...(reopened ? { status: "active" as const } : {}),
     });
 
+    const updated = await ctx.db.get(args.listingId);
+    if (updated) {
+      await syncListingAttendanceGuests(ctx, updated, Date.now());
+    }
+
     const acceptedRequests = await ctx.db
       .query("requests")
       .withIndex("by_targetListingId_and_status", (q) =>
@@ -549,6 +614,11 @@ export const removeMember = mutation({
       seatsAvailable: newSeats,
       ...(reopened ? { status: "active" as const } : {}),
     });
+
+    const updated = await ctx.db.get(args.listingId);
+    if (updated) {
+      await syncListingAttendanceGuests(ctx, updated, Date.now());
+    }
 
     const acceptedRequests = await ctx.db
       .query("requests")
@@ -632,7 +702,7 @@ export const updateListing = mutation({
         }
         patch.menuPdfId = undefined;
       } else {
-        await validateMenuPdfId(ctx, args.menuPdfId);
+        await validateMenuPdfId(ctx, args.menuPdfId, userId);
         if (listing.menuPdfId && listing.menuPdfId !== args.menuPdfId) {
           await deleteMenuPdfIfPresent(ctx, listing.menuPdfId);
         }
@@ -677,6 +747,12 @@ export const updateListing = mutation({
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.listingId, patch);
     }
+
+    const updated = await ctx.db.get(args.listingId);
+    if (updated && args.dateTime !== undefined && updated.attendanceAppliedAt === undefined) {
+      await scheduleFormalCompletion(ctx, args.listingId, updated.dateTime);
+    }
+
     return args.listingId;
   },
 });
@@ -700,6 +776,7 @@ async function expirePastListingsBatch(
   for (const listing of result.page) {
     if (listingIsPast(listing.dateTime, nowMs)) {
       await expireListing(ctx, listing._id);
+      await applyCompletedFormalForListing(ctx, listing._id, nowMs);
       expired++;
     }
   }
@@ -724,27 +801,6 @@ export const expirePastListings = internalMutation({
     }
 
     return { expired: batch.expired, scanned: batch.scanned };
-  },
-});
-
-export const syncExpiredListings = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await requireUserId(ctx);
-
-    let totalExpired = 0;
-    let totalScanned = 0;
-    let cursor: string | undefined;
-
-    for (;;) {
-      const batch = await expirePastListingsBatch(ctx, cursor);
-      totalExpired += batch.expired;
-      totalScanned += batch.scanned;
-      if (batch.isDone) break;
-      cursor = batch.continueCursor;
-    }
-
-    return { expired: totalExpired, scanned: totalScanned };
   },
 });
 

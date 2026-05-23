@@ -10,6 +10,7 @@ import {
   validateMentionUsers,
 } from "./chatMentions";
 import { assertVerifiedEmail } from "./userVerification";
+import { requireActiveUser } from "./guards";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -228,8 +229,7 @@ async function buildReplySnapshot(
 }
 
 async function requireUserId(ctx: Ctx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Not authenticated");
+  const { userId } = await requireActiveUser(ctx);
   return userId;
 }
 
@@ -920,6 +920,7 @@ export const listGroupMembers = query({
       id: v.id("users"),
       name: v.string(),
       college: v.optional(v.string()),
+      avatar: v.optional(avatarValue),
       joinedAt: v.number(),
     }),
   ),
@@ -955,6 +956,7 @@ export const listGroupMembers = query({
         id: row.userId,
         name: u?.name?.trim() || "User",
         ...(u?.college?.trim() ? { college: u.college.trim() } : {}),
+        ...(u?.avatar ? { avatar: u.avatar } : {}),
         joinedAt: row.joinedAt,
       });
     }
@@ -980,7 +982,7 @@ function searchUsersByPrefix(
   q: string,
   limit: number,
   excludeIds?: Set<string>,
-): { id: Id<"users">; name: string; college?: string }[] {
+): { id: Id<"users">; name: string; college?: string; avatar?: Doc<"users">["avatar"] }[] {
   const normalized = q.trim().toLowerCase();
   if (normalized.length < 1) return [];
 
@@ -996,6 +998,7 @@ function searchUsersByPrefix(
       id: u._id,
       name: u.name!.trim().replace(/\s+/g, " "),
       ...(u.college?.trim() ? { college: u.college.trim() } : {}),
+      ...(u.avatar ? { avatar: u.avatar } : {}),
     }));
 }
 
@@ -1006,6 +1009,7 @@ export const searchUsersForChat = query({
       id: v.id("users"),
       name: v.string(),
       college: v.optional(v.string()),
+      avatar: v.optional(avatarValue),
     }),
   ),
   handler: async (ctx, args) => {
@@ -1028,6 +1032,7 @@ export const searchUsersForChat = query({
         id: u._id,
         name: u.name!.trim(),
         ...(u.college?.trim() ? { college: u.college.trim() } : {}),
+        ...(u.avatar ? { avatar: u.avatar } : {}),
       }));
   },
 });
@@ -1042,6 +1047,7 @@ export const searchUsersForMention = query({
       id: v.id("users"),
       name: v.string(),
       college: v.optional(v.string()),
+      avatar: v.optional(avatarValue),
     }),
   ),
   handler: async (ctx, args) => {

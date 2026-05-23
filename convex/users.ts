@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
@@ -7,18 +6,24 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { enrichListing } from "./listingHelpers";
 import { DEFAULT_UI_FONT, uiFontValidator } from "./uiFont";
 import { hasVerifiedEmail } from "./userVerification";
-
-const chatPickerUserValidator = v.object({
-  _id: v.id("users"),
-  name: v.optional(v.string()),
-  college: v.optional(v.string()),
-  email: v.optional(v.string()),
-});
+import {
+  optionalUserId,
+  requireUserId,
+  requireVerifiedUser,
+  sanitizePublicUser,
+} from "./guards";
 
 const avatarValue = v.union(
   v.object({ kind: v.literal("preset"), id: v.string() }),
   v.object({ kind: v.literal("image"), dataUrl: v.string() }),
 );
+
+const chatPickerUserValidator = v.object({
+  _id: v.id("users"),
+  name: v.optional(v.string()),
+  college: v.optional(v.string()),
+  avatar: v.optional(avatarValue),
+});
 
 const avatarOrClear = v.optional(v.union(avatarValue, v.null()));
 
@@ -106,20 +111,10 @@ async function hasRevealableContact(
   return false;
 }
 
-function userWithoutPublicContact(user: Doc<"users">): Omit<
-  Doc<"users">,
-  "instagramHandle" | "whatsappPhone"
-> {
-  const copy = { ...user };
-  delete copy.instagramHandle;
-  delete copy.whatsappPhone;
-  return copy;
-}
-
 export const current = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await optionalUserId(ctx);
     if (!userId) return null;
     return await ctx.db.get(userId);
   },
@@ -129,7 +124,7 @@ export const listPublic = query({
   args: {},
   handler: async (ctx) => {
     const users = await ctx.db.query("users").order("desc").take(500);
-    return users.map(userWithoutPublicContact);
+    return users.map(sanitizePublicUser);
   },
 });
 
@@ -138,7 +133,7 @@ export const listForChatPicker = query({
   args: {},
   returns: v.array(chatPickerUserValidator),
   handler: async (ctx) => {
-    const viewerId = await getAuthUserId(ctx);
+    const viewerId = await optionalUserId(ctx);
     if (!viewerId) return [];
 
     const users = await ctx.db.query("users").order("desc").take(500);
@@ -148,7 +143,7 @@ export const listForChatPicker = query({
         _id: u._id,
         name: u.name,
         college: u.college,
-        email: u.email,
+        avatar: u.avatar,
       }));
   },
 });
@@ -161,14 +156,14 @@ export const getPublicByIds = query({
     const users = await Promise.all(unique.map((id) => ctx.db.get(id)));
     return users
       .filter((user): user is Doc<"users"> => user !== null)
-      .map(userWithoutPublicContact);
+      .map(sanitizePublicUser);
   },
 });
 
 export const myWishlist = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await optionalUserId(ctx);
     if (!userId) return [];
     const user = await ctx.db.get(userId);
     if (!user) return [];
@@ -188,8 +183,7 @@ export const completeOnboarding = mutation({
     dietaryRequirements: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId } = await requireVerifiedUser(ctx);
 
     const name = args.name.trim();
     const college = args.college.trim();
@@ -219,8 +213,7 @@ export const completeOnboarding = mutation({
 export const agreeToRules = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const userId = await requireUserId(ctx);
     await ctx.db.patch(userId, { agreedToRules: true });
   },
 });
@@ -241,8 +234,7 @@ export const patchProfile = mutation({
     emailWishlistAlerts: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId } = await requireVerifiedUser(ctx);
 
     type UserPatch = Partial<
       Pick<
@@ -322,7 +314,7 @@ export const getPublicProfile = query({
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
 
-    const viewerId = await getAuthUserId(ctx);
+    const viewerId = await optionalUserId(ctx);
     /* Trusted server time for contact privacy; client-supplied `now` would be spoofable. */
     const nowMs = Date.now();
     const revealContact = await hasRevealableContact(
@@ -351,7 +343,6 @@ export const getPublicProfile = query({
               whatsappPhone: user.whatsappPhone,
             }
           : {}),
-        dietaryRequirements: user.dietaryRequirements,
         subject: user.subject ?? "",
         uiFont: user.uiFont ?? DEFAULT_UI_FONT,
         avatar: user.avatar,
@@ -368,8 +359,7 @@ export const getPublicProfile = query({
 export const toggleWishlistCollege = mutation({
   args: { college: v.string() },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId } = await requireVerifiedUser(ctx);
 
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User profile not found.");
@@ -391,8 +381,7 @@ export const toggleWishlistCollege = mutation({
 export const saveWishlistColleges = mutation({
   args: { colleges: v.array(v.string()) },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    const { userId } = await requireVerifiedUser(ctx);
 
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User profile not found.");

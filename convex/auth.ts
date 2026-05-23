@@ -5,7 +5,7 @@ import { TestEmail } from "./TestEmail";
 import { isTestAuthConfigured } from "./testAuth";
 
 const providers = [ResendOTP, AdminEmail];
-if (isTestAuthConfigured()) {
+if (process.env.NODE_ENV !== "production" && isTestAuthConfigured()) {
   providers.push(TestEmail);
 }
 

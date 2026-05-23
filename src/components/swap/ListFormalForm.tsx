@@ -12,14 +12,15 @@ import { DISPLAY_SECTION } from "@/src/constants/layout";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { normalizeCollegeName } from "@/src/lib/data/colleges";
-import type { NewListingInput } from "@/src/lib/data/dataClient";
-import { GROUP_SIZES, type GroupSize, type ListingType } from "@/src/lib/data/types";
+import type { NewListingInput, UpdateListingInput } from "@/src/lib/data/dataClient";
+import { GROUP_SIZES, type GroupSize, type Listing, type ListingType } from "@/src/lib/data/types";
+import { menuFileLabel } from "@/src/lib/upload/menuFile";
 import { runAfterUIReady } from "@/src/lib/media/openPhotoLibrary";
 import { pickMenuImageFromLibrary } from "@/src/lib/upload/pickMenuImageFromLibrary";
 import { uploadMenuFileMobile, type MenuFileAsset } from "@/src/lib/upload/menuFileMobile";
 import { useMutation } from "convex/react";
 import * as DocumentPicker from "expo-document-picker";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 const LISTING_TYPES: { value: ListingType; label: string }[] = [
@@ -28,32 +29,76 @@ const LISTING_TYPES: { value: ListingType; label: string }[] = [
   { value: "both", label: "Swap or pay" },
 ];
 
-type Props = {
-  onSubmit: (input: NewListingInput) => void;
+type CreateProps = {
+  mode?: "create";
+  initialListing?: never;
+  onSubmit: (input: NewListingInput) => void | Promise<void>;
   onCancel?: () => void;
 };
 
-export function ListFormalForm({ onSubmit, onCancel }: Props) {
+type EditProps = {
+  mode: "edit";
+  initialListing: Listing;
+  onSubmit: (input: UpdateListingInput) => void | Promise<void>;
+  onCancel?: () => void;
+};
+
+type Props = CreateProps | EditProps;
+
+function listingDateTime(listing: Listing): Date {
+  const parsed = Date.parse(listing.dateTime);
+  return Number.isNaN(parsed) ? defaultListFormalDateTime() : new Date(parsed);
+}
+
+function initialPriceString(listing: Listing): string {
+  return listing.price !== undefined ? String(listing.price) : "";
+}
+
+export function ListFormalForm(props: Props) {
+  const { onSubmit, onCancel } = props;
+  const isEdit = props.mode === "edit";
+  const initialListing = isEdit ? props.initialListing : undefined;
+  const minGroupSize = isEdit ? initialListing!.members.length : 1;
+
   const { user } = useAuth();
   const { colors } = useOxTheme();
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
-  const [dateTime, setDateTime] = useState(defaultListFormalDateTime);
-  const [groupSize, setGroupSize] = useState<GroupSize>(2);
-  const [message, setMessage] = useState("");
-  const [menu, setMenu] = useState("");
-  const [listingType, setListingType] = useState<ListingType>("swap");
-  const [price, setPrice] = useState("");
+  const [dateTime, setDateTime] = useState(() =>
+    initialListing ? listingDateTime(initialListing) : defaultListFormalDateTime(),
+  );
+  const [groupSize, setGroupSize] = useState<GroupSize>(
+    () => initialListing?.groupSize ?? 2,
+  );
+  const [message, setMessage] = useState(() => initialListing?.message ?? "");
+  const [menu, setMenu] = useState(() => initialListing?.menu ?? "");
+  const [listingType, setListingType] = useState<ListingType>(
+    () => initialListing?.listingType ?? "swap",
+  );
+  const [price, setPrice] = useState(() =>
+    initialListing ? initialPriceString(initialListing) : "",
+  );
   const [menuAsset, setMenuAsset] = useState<MenuFileAsset | null>(null);
+  const [clearMenuPdf, setClearMenuPdf] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+
+  const hadMenuAttachment = !!(initialListing?.menuPdfUrl && !clearMenuPdf);
+  const showExistingMenu =
+    isEdit && hadMenuAttachment && !menuAsset;
+
+  const existingMenuLabel = useMemo(() => {
+    if (!initialListing?.menuPdfUrl) return "Menu file";
+    return `Menu (${menuFileLabel(initialListing.menuFileContentType)})`;
+  }, [initialListing?.menuPdfUrl, initialListing?.menuFileContentType]);
 
   async function pickMenuFromLibrary() {
     setError(null);
     const result = await pickMenuImageFromLibrary();
     if (result.ok) {
       setMenuAsset(result.asset);
+      setClearMenuPdf(false);
       return;
     }
     if (result.reason === "permission") {
@@ -79,24 +124,41 @@ export function ListFormalForm({ onSubmit, onCancel }: Props) {
       mimeType: asset.mimeType ?? "application/octet-stream",
       size: asset.size ?? 0,
     });
+    setClearMenuPdf(false);
   }
 
   function pickMenu() {
     setAttachMenuOpen(true);
   }
 
+  function removeMenuAttachment() {
+    setMenuAsset(null);
+    setClearMenuPdf(true);
+    setError(null);
+  }
+
   async function handleSubmit() {
-    if (!user) return;
-    const college = normalizeCollegeName(user.college);
-    if (!college || !user.year.trim() || !user.role.trim()) {
-      setError("Complete your profile (college, year, role) first.");
-      return;
+    if (!isEdit && !user) return;
+    if (!isEdit) {
+      const college = normalizeCollegeName(user!.college);
+      if (!college || !user!.year.trim() || !user!.role.trim()) {
+        setError("Complete your profile (college, year, role) first.");
+        return;
+      }
     }
+
     const iso = dateTime.toISOString();
     const needsPrice = listingType === "pay" || listingType === "both";
     const priceNum = needsPrice ? parseInt(price, 10) : undefined;
     if (needsPrice && (!priceNum || priceNum < 1)) {
       setError("Enter a price of at least £1.");
+      return;
+    }
+
+    if (groupSize < minGroupSize) {
+      setError(
+        `Group size cannot be less than ${minGroupSize} (current members).`,
+      );
       return;
     }
 
@@ -109,17 +171,21 @@ export function ListFormalForm({ onSubmit, onCancel }: Props) {
           generateUploadUrl(),
         );
       }
-      onSubmit({
+
+      const payload: NewListingInput = {
         dateTime: iso,
         groupSize,
         message: message.trim(),
         menu: menu.trim(),
         listingType,
         ...(menuPdfId ? { menuPdfId } : {}),
+        ...(clearMenuPdf ? { clearMenuPdf: true } : {}),
         ...(priceNum !== undefined ? { price: priceNum } : {}),
-      });
+      };
+
+      await onSubmit(payload);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not post listing.");
+      setError(e instanceof Error ? e.message : "Could not save listing.");
     } finally {
       setUploading(false);
     }
@@ -132,14 +198,18 @@ export function ListFormalForm({ onSubmit, onCancel }: Props) {
         Group size
       </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}>
-        {GROUP_SIZES.map((s) => (
-          <Chip
-            key={s}
-            label={String(s)}
-            selected={groupSize === s}
-            onPress={() => setGroupSize(s)}
-          />
-        ))}
+        {GROUP_SIZES.map((s) => {
+          const disabled = isEdit && s < minGroupSize;
+          return (
+            <Chip
+              key={s}
+              label={String(s)}
+              selected={groupSize === s}
+              onPress={() => setGroupSize(s)}
+              disabled={disabled}
+            />
+          );
+        })}
       </View>
       <Text style={[styles.sectionLabel, oxText, { color: colors.ink }]}>
         Listing type
@@ -177,17 +247,43 @@ export function ListFormalForm({ onSubmit, onCancel }: Props) {
         multiline
         wrapperStyle={{ marginTop: 12, borderRadius: 16, minHeight: 72 }}
       />
-      <OxButton
-        title={menuAsset ? `Menu: ${menuAsset.name}` : "Attach menu PDF/image"}
-        variant="secondary"
-        onPress={pickMenu}
-        style={{ marginTop: 12 }}
-      />
+      {showExistingMenu ? (
+        <View style={styles.menuRow}>
+          <Text style={[oxText, { color: colors.inkMuted, flex: 1 }]}>
+            {existingMenuLabel} attached
+          </Text>
+          <OxButton
+            title="Replace"
+            variant="secondary"
+            onPress={pickMenu}
+            style={styles.menuAction}
+          />
+          <OxButton
+            title="Remove"
+            variant="ghost"
+            onPress={removeMenuAttachment}
+            style={styles.menuAction}
+          />
+        </View>
+      ) : (
+        <OxButton
+          title={
+            menuAsset
+              ? `Menu: ${menuAsset.name}`
+              : isEdit
+                ? "Attach menu PDF/image"
+                : "Attach menu PDF/image"
+          }
+          variant="secondary"
+          onPress={pickMenu}
+          style={{ marginTop: 12 }}
+        />
+      )}
       {error ? (
         <Text style={{ color: colors.danger, marginTop: 8 }}>{error}</Text>
       ) : null}
       <OxButton
-        title="Post listing"
+        title={isEdit ? "Save changes" : "Post listing"}
         loading={uploading}
         onPress={handleSubmit}
         style={{ marginTop: 16 }}
@@ -219,5 +315,15 @@ const styles = StyleSheet.create({
     lineHeight: DISPLAY_SECTION * 1.35,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  menuRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  menuAction: {
+    marginTop: 0,
   },
 });

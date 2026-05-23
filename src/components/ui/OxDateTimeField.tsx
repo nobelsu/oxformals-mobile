@@ -100,8 +100,8 @@ export function OxDateTimeField({ value, onChange }: Props) {
         <DoodleOutline
           seed={17}
           fill={colors.paper}
-          stroke={colors.ink}
-          dashed={!open}
+          stroke={open ? colors.ink : colors.inkMuted}
+          dashed={false}
           focused={open}
           contentStyle={styles.triggerInner}
         >

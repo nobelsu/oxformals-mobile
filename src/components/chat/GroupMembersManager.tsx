@@ -189,7 +189,6 @@ export function GroupMembersManager({ conversation }: Props) {
             onPress={() => void handleRename()}
             loading={renaming}
             disabled={!nameDirty}
-            dashed
             style={styles.saveNameBtn}
           />
           <DoodleDivider seed={seedFrom(conversation.id)} marginVertical={8} />
@@ -209,7 +208,6 @@ export function GroupMembersManager({ conversation }: Props) {
                 seed={seedFrom(m.id)}
                 fill={colors.paper}
                 stroke={colors.ink}
-                dashed
                 style={styles.memberRowOutline}
                 contentStyle={styles.memberRowInner}
               >
@@ -283,7 +281,6 @@ export function GroupMembersManager({ conversation }: Props) {
         <OxButton
           title="Leave group"
           variant="danger"
-          dashed
           onPress={confirmLeave}
         />
       </View>

@@ -25,7 +25,7 @@ export function DoodleBubble({ children, seed, mine, style }: Props) {
         seed={seed}
         fill={mine ? colors.accent : colors.paper}
         stroke={colors.ink}
-        dashed={!mine}
+        dashed={false}
         contentStyle={styles.inner}
       >
         {children}

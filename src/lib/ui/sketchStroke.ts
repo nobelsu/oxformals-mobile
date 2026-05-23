@@ -98,25 +98,25 @@ export function buildWobblyRectPathNormalized(seed: number, inset = 1.5): string
   return `M ${x1} ${y1} L ${x2} ${y2} L ${x3} ${y3} L ${x4} ${y4} Z`;
 }
 
-/** Hand-drawn send / paper plane: filled triangle + center fold line. */
+/** Hand-drawn send / paper plane: clear right-pointing triangle (tail left, tip right). */
 export function buildWobblySendPaths(
   size: number,
   seed: number,
 ): { plane: string; fold: string } {
   const w = (i: number) => seededOffset(seed, i) * 1.2;
-  const pad = size * 0.22;
+  const pad = size * 0.2;
 
-  const tailX = pad + w(0);
-  const tailY = size - pad + w(1);
-  const tipX = size - pad + w(2);
-  const tipY = pad + w(3);
-  const wingX = size - pad * 0.55 + w(4);
-  const wingY = size - pad + w(5);
+  const tipX = size - pad + w(0);
+  const tipY = size / 2 + w(1);
+  const tailTopX = pad + w(2);
+  const tailTopY = size * 0.3 + w(3);
+  const tailBotX = pad + w(4);
+  const tailBotY = size * 0.7 + w(5);
 
-  const plane = `M ${tailX} ${tailY} L ${tipX} ${tipY} L ${wingX} ${wingY} Z`;
-  const foldX = (tailX + wingX) / 2 + w(6);
-  const foldY = (tailY + tipY) / 2 + w(7);
-  const fold = `M ${tailX} ${tailY} L ${foldX} ${foldY}`;
+  const plane = `M ${tipX} ${tipY} L ${tailTopX} ${tailTopY} L ${tailBotX} ${tailBotY} Z`;
+  const foldX = tailTopX + (tipX - tailTopX) * 0.5 + w(6);
+  const foldY = (tailTopY + tailBotY) / 2 + w(7);
+  const fold = `M ${tailTopX} ${tailTopY} L ${foldX} ${foldY}`;
 
   return { plane, fold };
 }
@@ -343,21 +343,22 @@ export function buildWobblyChatPaths(
   return { back, bubble, lines };
 }
 
-/** Hand-drawn person silhouette for profile tab. */
+/** Hand-drawn person silhouette for profile tab — circle head + U-shaped shoulders. */
 export function buildWobblyPersonPaths(
   size: number,
   seed: number,
 ): { head: string; body: string } {
-  const w = (i: number) => seededOffset(seed, i) * 1.1;
+  const w = (i: number) => seededOffset(seed, i) * 1.0;
   const c = size / 2;
-  const headR = size * 0.17;
-  const n = 6;
+  const headCy = size * 0.27;
+  const headR = size * 0.16;
+  const n = 8;
   const pts: [number, number][] = [];
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 - Math.PI / 2;
     pts.push([
       c + Math.cos(a) * (headR + w(i)),
-      size * 0.32 + Math.sin(a) * (headR + w(n + i)),
+      headCy + Math.sin(a) * (headR + w(n + i)),
     ]);
   }
   let head = `M ${pts[0][0]} ${pts[0][1]}`;
@@ -366,8 +367,11 @@ export function buildWobblyPersonPaths(
   }
   head += " Z";
 
-  const shoulder = size * 0.72;
-  const body = `M ${c - shoulder * 0.55 + w(12)} ${size * 0.52 + w(13)} Q ${c + w(14)} ${size * 0.92 + w(15)}, ${c + shoulder * 0.55 + w(16)} ${size * 0.52 + w(17)}`;
+  // U-shaped torso: endpoints at shoulders, control below so the arc reads as body not a smile.
+  const neckY = headCy + headR + size * 0.04 + w(16);
+  const shoulderHalf = size * 0.38;
+  const torsoY = size * 0.9 + w(17);
+  const body = `M ${c - shoulderHalf + w(18)} ${neckY + w(19)} Q ${c + w(20)} ${torsoY + w(21)}, ${c + shoulderHalf + w(22)} ${neckY + w(23)}`;
 
   return { head, body };
 }
