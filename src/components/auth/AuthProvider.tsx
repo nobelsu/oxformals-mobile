@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import type { SignInResult, SignupInput, User } from "@/src/lib/auth/types";
+import { isProfileComplete } from "@/src/lib/auth/profileComplete";
 import { DEFAULT_UI_FONT } from "@/src/lib/uiFont";
 import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
@@ -14,16 +15,6 @@ import {
 type Status = "hydrating" | "ready";
 const ADMIN_EMAIL = "admin@ox.ac.uk";
 const TEST_AUTH_EMAIL = process.env.EXPO_PUBLIC_AUTH_TEST_EMAIL?.trim().toLowerCase();
-
-function profileComplete(doc: Doc<"users"> | null | undefined): boolean {
-  if (!doc) return false;
-  return !!(
-    doc.name?.trim() &&
-    doc.college?.trim() &&
-    doc.year?.trim() &&
-    doc.role?.trim()
-  );
-}
 
 function mapDocToUser(doc: Doc<"users">): User {
   return {
@@ -89,18 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     status === "ready" &&
     jwtAuthenticated &&
     convexUserDoc != null &&
-    !profileComplete(convexUserDoc);
+    !isProfileComplete(convexUserDoc);
 
   const isAuthenticated =
     jwtAuthenticated &&
     convexUserDoc != null &&
-    profileComplete(convexUserDoc);
+    isProfileComplete(convexUserDoc);
 
   const needsRulesAgreement =
     isAuthenticated && convexUserDoc?.agreedToRules !== true;
 
   const user: User | null =
-    jwtAuthenticated && convexUserDoc && profileComplete(convexUserDoc)
+    jwtAuthenticated && convexUserDoc && isProfileComplete(convexUserDoc)
       ? mapDocToUser(convexUserDoc)
       : null;
 

@@ -1,15 +1,15 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { useData } from "@/src/components/data/useData";
 import { Chip } from "@/src/components/ui/Chip";
-import { DoodleCalendarButton } from "@/src/components/ui/DoodleCalendarButton";
 import { DoodleCloseButton } from "@/src/components/ui/DoodleCloseButton";
+import { DoodleOutline } from "@/src/components/ui/DoodleOutline";
+import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
 import { DoodleScrollDownButton } from "@/src/components/ui/DoodleScrollDownButton";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
 import { OxModal } from "@/src/components/ui/OxModal";
 import { OxRefreshControl } from "@/src/components/ui/OxRefreshControl";
 import { OxSpinner } from "@/src/components/ui/OxSpinner";
-import { ScrollEdgeFade } from "@/src/components/ui/ScrollEdgeFade";
 import { SketchCard } from "@/src/components/ui/SketchCard";
 import { useListFormalModal } from "@/src/components/listing/ListFormalModalProvider";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
@@ -25,11 +25,12 @@ import {
 } from "@/src/constants/layout";
 import { space, TAP_MIN } from "@/src/constants/spacing";
 import { isoToLocalDateKey } from "@/src/lib/data/format";
+import { ROLE_OPTIONS } from "@/src/lib/data/roles";
 import type { Listing } from "@/src/lib/data/types";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -133,6 +134,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
   });
 
   const [collegeFilter, setCollegeFilter] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pickedCalendarDates, setPickedCalendarDates] = useState<string[]>([]);
   const [filtersModalOpen, setFiltersModalOpen] = useState(false);
@@ -259,8 +261,9 @@ export function BrowseTab({ onSignInRequired }: Props) {
           if (!effectiveCollegeFilter) return true;
           if (effectiveCollegeFilter === MY_FORMALS) return wishlistSet.has(l.college);
           return l.college === effectiveCollegeFilter;
-        }),
-    [listings, user, effectiveCollegeFilter, wishlistSet],
+        })
+        .filter((l) => !roleFilter || l.role === roleFilter),
+    [listings, user, effectiveCollegeFilter, wishlistSet, roleFilter],
   );
 
   const browseListings = useMemo(() => {
@@ -292,8 +295,14 @@ export function BrowseTab({ onSignInRequired }: Props) {
   const formalCount = browseListings.length;
   const formalCountText = formalCountLabel(formalCount);
 
-  const hasActiveFilters = pickedCalendarDates.length > 0;
+  const hasActiveFilters =
+    pickedCalendarDates.length > 0 || roleFilter !== null;
   const hasCollegeMatches = collegeFilteredListings.length > 0;
+
+  function clearAllFilters() {
+    setPickedCalendarDates([]);
+    setRoleFilter(null);
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -328,7 +337,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
             </View>
             <OxInput
               seed={BROWSE_SEARCH_SEED}
-              placeholder="Find your next formal..."
+              placeholder="Search college, menu, role, host..."
               value={searchQuery}
               onChangeText={setSearchQuery}
               onFocusChange={handleSearchFocusChange}
@@ -357,13 +366,37 @@ export function BrowseTab({ onSignInRequired }: Props) {
               searchBarFocused ? "no-hide-descendants" : "auto"
             }
           >
-            <DoodleCalendarButton
+            <Pressable
               onPress={() => setFiltersModalOpen(true)}
-              accessibilityLabel="Open date filter"
-              accessibilityState={{ expanded: filtersModalOpen }}
+              disabled={searchBarFocused}
               pointerEvents={searchBarFocused ? "none" : "auto"}
-              showBadge={hasActiveFilters}
-            />
+              accessibilityRole="button"
+              accessibilityLabel="Open filters"
+              accessibilityState={{ expanded: filtersModalOpen }}
+              hitSlop={10}
+              style={({ pressed }) => ({
+                opacity: searchBarFocused ? 0.3 : pressed ? 0.85 : 1,
+                transform: [{ scale: pressed && !searchBarFocused ? 0.98 : 1 }],
+              })}
+            >
+              <DoodleOutline
+                seed={19}
+                fill={colors.paper}
+                stroke={colors.ink}
+                contentStyle={{
+                  ...styles.filterBtn,
+                  width: BROWSE_CALENDAR_BTN_SIZE,
+                  height: BROWSE_CALENDAR_BTN_SIZE,
+                }}
+              >
+                <Ionicons name="filter-outline" size={22} color={colors.ink} />
+                {hasActiveFilters ? (
+                  <View
+                    style={[styles.filterBadge, { backgroundColor: colors.accent }]}
+                  />
+                ) : null}
+              </DoodleOutline>
+            </Pressable>
           </Animated.View>
         </View>
 
@@ -410,6 +443,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
         >
           {formalCountText}
         </Text>
+        <DoodleDivider seed={77} marginVertical={0} />
       </View>
       <View style={styles.listArea}>
         {showRefreshSpinner ? (
@@ -458,15 +492,13 @@ export function BrowseTab({ onSignInRequired }: Props) {
               </Text>
               <Text style={[styles.empty, { color: colors.inkMuted }]}>
                 {hasCollegeMatches
-                  ? "Nothing matches your filters. Try another college, open the calendar to choose dates, or clear your search."
+                  ? "Nothing matches your filters. Try another college above, open filters to choose dates or role, or clear your search."
                   : "No open swaps here yet. Try another college or list your own formal."}
               </Text>
             </SketchCard>
           }
           contentContainerStyle={styles.list}
         />
-        <ScrollEdgeFade edge="top" color={colors.bg} />
-        <ScrollEdgeFade edge="bottom" color={colors.bg} />
         {showScrollTop ? (
           <View style={styles.scrollFab} pointerEvents="box-none">
             <DoodleScrollDownButton
@@ -482,9 +514,15 @@ export function BrowseTab({ onSignInRequired }: Props) {
       <OxModal
         visible={filtersModalOpen}
         onClose={() => setFiltersModalOpen(false)}
-        title="Dates"
+        title="Filters"
         showCloseButton={false}
       >
+        <Text
+          style={[styles.modalSectionTitle, { color: colors.ink }]}
+          accessibilityRole="header"
+        >
+          Dates
+        </Text>
         <Text style={[styles.modalInstructions, { color: colors.inkMuted }]}>
           {BROWSE_DATE_CALENDAR_INSTRUCTIONS}
         </Text>
@@ -493,6 +531,36 @@ export function BrowseTab({ onSignInRequired }: Props) {
           value={pickedCalendarDates}
           onChange={setPickedCalendarDates}
         />
+        <DoodleDivider seed={88} marginVertical={16} />
+        <Text
+          style={[styles.modalSectionTitle, { color: colors.ink }]}
+          accessibilityRole="header"
+        >
+          Role
+        </Text>
+        <View style={styles.roleChips}>
+          <Chip
+            label="All roles"
+            selected={roleFilter === null}
+            onPress={() => setRoleFilter(null)}
+          />
+          {ROLE_OPTIONS.map((role) => (
+            <Chip
+              key={role}
+              label={role}
+              selected={roleFilter === role}
+              onPress={() => setRoleFilter(role)}
+            />
+          ))}
+        </View>
+        {hasActiveFilters ? (
+          <OxButton
+            title="Clear filters"
+            variant="secondary"
+            onPress={clearAllFilters}
+            style={styles.clearFiltersBtn}
+          />
+        ) : null}
         <OxButton
           title="Done"
           onPress={() => setFiltersModalOpen(false)}
@@ -507,7 +575,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  listArea: { flex: 1, position: "relative" },
+  listArea: { flex: 1 },
   scrollFab: {
     position: "absolute",
     right: SCREEN_PADDING,
@@ -520,7 +588,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 3,
+    zIndex: 1,
   },
   stickyHeader: {
     paddingTop: TAB_SCREEN_TITLE_PADDING_TOP,
@@ -598,12 +666,39 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontFamily: FONT_DISPLAY,
   },
+  filterBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadge: {
+    position: "absolute",
+    right: -4,
+    top: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  modalSectionTitle: {
+    fontFamily: FONT_DISPLAY,
+    fontSize: 14,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
   modalInstructions: {
     fontFamily: FONT_DISPLAY,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: -space[3],
     marginBottom: space[5],
+  },
+  roleChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  clearFiltersBtn: {
+    marginTop: 8,
   },
   doneBtn: {
     marginTop: 16,

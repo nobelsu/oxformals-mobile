@@ -9,6 +9,7 @@ import {
 import { authTypography } from "@/src/components/auth/authStyles";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
+import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { focusInputSoon } from "@/src/components/auth/profileFieldFocus";
 import { useSplashDone } from "@/src/contexts/SplashContext";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
@@ -77,26 +78,17 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const navigateAfterAuth = useCallback(() => {
-    if (needsRulesAgreement) {
-      router.replace("/house-rules");
-    } else {
-      router.replace("/(tabs)/browse");
-    }
-  }, [needsRulesAgreement, router]);
+  const showProfileStep = needsOnboarding;
 
   useEffect(() => {
-    if (status === "ready" && isAuthenticated && !needsOnboarding) {
-      navigateAfterAuth();
-    }
-  }, [status, isAuthenticated, needsOnboarding, navigateAfterAuth]);
-
-  useEffect(() => {
-    if (status === "ready" && needsOnboarding) {
+    if (status !== "ready") return;
+    if (needsOnboarding) {
       setStep("profile");
       if (authEmail) setEmail(authEmail);
+    } else if (step === "profile") {
+      setStep("code");
     }
-  }, [status, needsOnboarding, authEmail]);
+  }, [status, needsOnboarding, authEmail, step]);
 
   const focusAuthInput = useCallback(() => {
     if (!splashDone) return;
@@ -113,6 +105,24 @@ export default function LoginScreen() {
   if (introReady && !hasSeenIntro) {
     return <Redirect href="/onboarding" />;
   }
+
+  if (status === "ready" && isAuthenticated) {
+    return (
+      <Redirect
+        href={needsRulesAgreement ? "/house-rules" : "/(tabs)/browse"}
+      />
+    );
+  }
+
+  if (status !== "ready") {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <OxLoadingView fill />
+      </View>
+    );
+  }
+
+  const layoutStep: Step = showProfileStep ? "profile" : step;
 
   function goToStep(next: Step) {
     setError(null);
@@ -161,9 +171,6 @@ export default function LoginScreen() {
     setError(null);
     try {
       await verifyCode(email, trimmedCode);
-      if (needsOnboarding) {
-        setStep("profile");
-      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Could not verify the code.";
@@ -240,15 +247,15 @@ export default function LoginScreen() {
 
   return (
     <AuthScreenLayout
-      title={titles[step]}
-      subtitle={subtitles[step]}
-      step={step}
-      scrollable={step === "profile"}
+      title={titles[layoutStep]}
+      subtitle={subtitles[layoutStep]}
+      step={layoutStep}
+      scrollable={showProfileStep}
       onStepPress={(s) => {
-        if (s === "email" && step !== "email") goToStep("email");
+        if (s === "email" && layoutStep !== "email") goToStep("email");
       }}
     >
-      {step === "email" && (
+      {!showProfileStep && step === "email" && (
         <AuthFormBlock
           error={error}
           input={
@@ -298,7 +305,7 @@ export default function LoginScreen() {
         />
       )}
 
-      {step === "code" && (
+      {!showProfileStep && step === "code" && (
         <AuthFormBlock
           error={error}
           input={
@@ -372,7 +379,7 @@ export default function LoginScreen() {
         />
       )}
 
-      {step === "profile" && (
+      {showProfileStep && (
         <View style={styles.profile}>
           <SignupProfileForm
             values={profile}

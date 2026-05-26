@@ -171,8 +171,15 @@ export function ListingCard({
         />
       )}
 
-      {!isCompact && listing.message ? (
-        <OxText style={[styles.message, { color: colors.inkMuted }]}>
+      {listing.message ? (
+        <OxText
+          style={[
+            styles.message,
+            isCompact ? styles.messageCompact : null,
+            { color: colors.inkMuted },
+          ]}
+          numberOfLines={isCompact ? 2 : undefined}
+        >
           {`"${listing.message}"`}
         </OxText>
       ) : null}
@@ -253,6 +260,7 @@ const styles = StyleSheet.create({
   ownerName: { fontSize: 18 },
   chips: { flexDirection: "row", flexWrap: "wrap", marginVertical: 4 },
   message: { fontSize: 14, marginVertical: 8, lineHeight: 20 },
+  messageCompact: { marginTop: 4, marginBottom: 0 },
   membersRow: {
     flexDirection: "row",
     alignItems: "center",

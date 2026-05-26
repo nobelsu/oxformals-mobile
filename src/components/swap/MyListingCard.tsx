@@ -1,5 +1,9 @@
 import { ListingGroupChatButton } from "@/src/components/chat/ListingGroupChatButton";
+import { ConfirmAttendanceIndicator } from "@/src/components/reviews/ConfirmAttendanceIndicator";
+import { RateFormalIndicator } from "@/src/components/reviews/RateFormalIndicator";
 import { Avatar } from "@/src/components/ui/Avatar";
+import { listingIsPast } from "@/lib/data/collegeReviewEligibility";
+import { useNowMs } from "@/src/lib/hooks/useNowMs";
 import { ListingTypeTag } from "@/src/components/ui/ListingTypeTag";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { SketchCard } from "@/src/components/ui/SketchCard";
@@ -26,7 +30,10 @@ type Props = {
   };
   memberUsers?: User[];
   onViewRequests?: () => void;
+  onPress?: () => void;
   compact?: boolean;
+  canRate?: boolean;
+  canConfirmAttendance?: boolean;
 };
 
 function seedFrom(id: string): number {
@@ -41,9 +48,14 @@ export function MyListingCard({
   profile,
   memberUsers = [],
   onViewRequests,
+  onPress,
   compact = false,
+  canRate = false,
+  canConfirmAttendance = false,
 }: Props) {
   const { colors } = useOxTheme();
+  const nowMs = useNowMs();
+  const isPastFormal = listingIsPast(listing.dateTime, nowMs);
 
   const seatsLabel =
     listing.seatsAvailable === 0
@@ -82,6 +94,9 @@ export function MyListingCard({
     listing.status === "confirmed" ||
     listing.status === "closed" ||
     listing.status === "expired";
+
+  const showReviewIndicators =
+    isPastFormal && (canConfirmAttendance || canRate);
 
   const content = (
     <>
@@ -124,18 +139,31 @@ export function MyListingCard({
         </Text>
       ) : null}
 
-      {memberUsers.length > 0 && (
-        <View style={styles.membersRow}>
-          <Text style={[styles.membersLabel, oxText, { color: colors.inkSoft }]}>
-            Dining with:
-          </Text>
-          <View style={styles.memberAvatars}>
-            {memberUsers.map((m) => (
-              <View key={m.id} style={styles.memberAvatar}>
-                <Avatar avatar={m.avatar} name={m.name} size={32} />
+      {(memberUsers.length > 0 || showReviewIndicators) && (
+        <View style={styles.membersFooter}>
+          {memberUsers.length > 0 ? (
+            <View style={styles.membersRow}>
+              <Text style={[styles.membersLabel, oxText, { color: colors.inkSoft }]}>
+                Dining with:
+              </Text>
+              <View style={styles.memberAvatars}>
+                {memberUsers.map((m) => (
+                  <View key={m.id} style={styles.memberAvatar}>
+                    <Avatar avatar={m.avatar} name={m.name} size={32} />
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
+            </View>
+          ) : (
+            <View style={styles.membersRowSpacer} />
+          )}
+          {showReviewIndicators ? (
+            canConfirmAttendance ? (
+              <ConfirmAttendanceIndicator />
+            ) : canRate ? (
+              <RateFormalIndicator />
+            ) : null
+          ) : null}
         </View>
       )}
 
@@ -167,8 +195,9 @@ export function MyListingCard({
     </SketchCard>
   );
 
-  if (onViewRequests) {
-    return <Pressable onPress={onViewRequests}>{card}</Pressable>;
+  const pressHandler = onPress ?? onViewRequests;
+  if (pressHandler) {
+    return <Pressable onPress={pressHandler}>{card}</Pressable>;
   }
 
   return card;
@@ -218,13 +247,22 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 13 },
   profileLine: { fontSize: 13, marginTop: 4 },
+  membersFooter: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
+  },
   membersRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: 10,
     flexWrap: "wrap",
+    flex: 1,
+    minWidth: 0,
   },
+  membersRowSpacer: { flex: 1 },
   membersLabel: { fontSize: 12 },
   memberAvatars: { flexDirection: "row", flexWrap: "wrap" },
   memberAvatar: { marginRight: -6 },

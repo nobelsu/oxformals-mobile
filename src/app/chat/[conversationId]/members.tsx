@@ -5,6 +5,7 @@ import { chatText } from "@/src/components/chat/chatText";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { SCREEN_PADDING } from "@/src/constants/layout";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
+import { useActiveConversation } from "@/src/hooks/useActiveConversation";
 import { chatConversationHref } from "@/src/lib/chat/navigation";
 import { isGroupConversation } from "@/src/lib/chat/types";
 import { useQuery } from "convex/react";
@@ -14,6 +15,10 @@ import { Text, View } from "react-native";
 export default function GroupMembersScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
   const { colors } = useOxTheme();
+
+  useActiveConversation(
+    conversationId ? (conversationId as Id<"conversations">) : undefined,
+  );
 
   const conversation = useQuery(
     api.chat.getConversation,

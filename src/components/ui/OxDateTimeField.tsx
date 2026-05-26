@@ -1,9 +1,9 @@
-import { Chip } from "@/src/components/ui/Chip";
 import { DoodleCloseButton } from "@/src/components/ui/DoodleCloseButton";
 import { DoodleOutline } from "@/src/components/ui/DoodleOutline";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxMonthCalendar } from "@/src/components/ui/OxMonthCalendar";
 import { OxText } from "@/src/components/ui/OxText";
+import { OxTimeComboField } from "@/src/components/ui/OxTimeComboField";
 import { space, TAP_MIN } from "@/src/constants/spacing";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
@@ -11,38 +11,13 @@ import { formatListingDate } from "@/src/lib/data/format";
 import { keyFromDate, parseKey } from "@/src/lib/calendar/monthGrid";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-
-const TIME_SLOTS: { hours: number; minutes: number }[] = [];
-for (let h = 12; h < 24; h++) {
-  TIME_SLOTS.push({ hours: h, minutes: 0 }, { hours: h, minutes: 30 });
-}
-
-function formatTimeSlot(hours: number, minutes: number): string {
-  const d = new Date(2000, 0, 1, hours, minutes);
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "numeric",
-    minute: minutes === 0 ? undefined : "2-digit",
-  }).format(d);
-}
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 function applyDatePart(base: Date, key: string): Date {
   const parsed = parseKey(key);
   if (!parsed) return base;
   const next = new Date(base);
   next.setFullYear(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-  return next;
-}
-
-function applyTimePart(base: Date, hours: number, minutes: number): Date {
-  const next = new Date(base);
-  next.setHours(hours, minutes, 0, 0);
   return next;
 }
 
@@ -76,7 +51,6 @@ export function OxDateTimeField({ value, onChange }: Props) {
   const todayKey = keyFromDate(new Date());
 
   const display = formatListingDate(value.toISOString());
-  const selectedTime = value.getHours() * 60 + value.getMinutes();
 
   function closePicker() {
     setOpen(false);
@@ -151,24 +125,7 @@ export function OxDateTimeField({ value, onChange }: Props) {
           <OxText style={[styles.timeLabel, { color: colors.inkMuted }]}>
             Time
           </OxText>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.timeRow}
-          >
-            {TIME_SLOTS.map(({ hours, minutes }) => {
-              const slotMins = hours * 60 + minutes;
-              const label = formatTimeSlot(hours, minutes);
-              return (
-                <Chip
-                  key={label}
-                  label={label}
-                  selected={selectedTime === slotMins}
-                  onPress={() => onChange(applyTimePart(value, hours, minutes))}
-                />
-              );
-            })}
-          </ScrollView>
+          <OxTimeComboField value={value} onChange={onChange} />
 
           <OxButton title="Done" onPress={closePicker} seed={71} />
         </View>
@@ -214,11 +171,5 @@ const styles = StyleSheet.create({
   },
   timeLabel: {
     fontSize: 14,
-  },
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: space[1],
-    gap: 0,
   },
 });

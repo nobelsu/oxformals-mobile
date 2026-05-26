@@ -1,4 +1,5 @@
 import { useAuth } from "@/src/components/auth/useAuth";
+import { CollegeReviewCard } from "@/src/components/reviews/CollegeReviewCard";
 import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
 import { ListingCard } from "@/src/components/swap/ListingCard";
 import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
@@ -28,6 +29,11 @@ export default function ProfileScreen() {
 
   const profile = useQuery(
     api.users.getPublicProfile,
+    userId && !isOwnProfile ? { userId: userId as Id<"users"> } : "skip",
+  );
+
+  const publicReviews = useQuery(
+    api.collegeReviews.listPublicReviewsForUser,
     userId && !isOwnProfile ? { userId: userId as Id<"users"> } : "skip",
   );
 
@@ -152,6 +158,32 @@ export default function ProfileScreen() {
             );
           })
         )}
+
+        <DoodleDivider seed={47} />
+        <Text style={[styles.heading, oxText, { color: colors.ink }]}>
+          Reviews
+          {publicReviews && publicReviews.length > 0
+            ? ` (${publicReviews.length})`
+            : ""}
+        </Text>
+        {publicReviews === undefined ? (
+          <Text style={[oxText, { color: colors.inkMuted }]}>
+            Loading reviews…
+          </Text>
+        ) : publicReviews.length === 0 ? (
+          <Text style={[oxText, { color: colors.inkMuted }]}>
+            {profile.user.name?.split(" ")[0] ?? "They"} hasn&apos;t posted any
+            public reviews yet.
+          </Text>
+        ) : (
+          <View style={styles.reviewsList}>
+            {publicReviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <CollegeReviewCard review={review} variant="profile" />
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </>
   );
@@ -166,4 +198,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 8,
   },
+  reviewsList: { gap: 12, marginTop: 4 },
+  reviewCard: {},
 });

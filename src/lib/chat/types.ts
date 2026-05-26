@@ -29,8 +29,18 @@ export type MessageReplySnapshot = {
   unavailable?: boolean;
 };
 
+export type OutboundMessageStatus = "sending" | "failed";
+
+export type PendingMessageId = `pending:${string}`;
+
+export type ChatMessageId = Id<"messages"> | PendingMessageId;
+
+export function isPendingMessageId(id: ChatMessageId): id is PendingMessageId {
+  return typeof id === "string" && id.startsWith("pending:");
+}
+
 export type ChatMessage = {
-  id: Id<"messages">;
+  id: ChatMessageId;
   conversationId: Id<"conversations">;
   senderUserId: Id<"users">;
   senderName?: string;
@@ -38,6 +48,18 @@ export type ChatMessage = {
   createdAt: number;
   referencedListing?: ListingSummary;
   mentions?: ChatMention[];
+  replyTo?: MessageReplySnapshot;
+  /** Client-only delivery state for outbound messages not yet in the server list. */
+  outboundStatus?: OutboundMessageStatus;
+};
+
+export type ChatSendArgs = {
+  body: string;
+  mentions?: ChatMention[];
+  referencedListingId?: Id<"listings">;
+  referencedListing?: ListingSummary;
+  replyToMessageId?: Id<"messages">;
+  /** Optimistic reply quote; captured before composer clears reply target. */
   replyTo?: MessageReplySnapshot;
 };
 

@@ -1,6 +1,13 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { useData } from "@/src/components/data/useData";
+import { ListingReviewHeaderIndicators } from "@/src/components/reviews/ListingReviewHeaderIndicators";
+import { ReviewFormalSection } from "@/src/components/reviews/ReviewFormalSection";
 import { ListingDetailContent } from "@/src/components/swap/ListingDetailContent";
+import { isGuestForCollegeListing } from "@/lib/data/collegeReviewEligibility";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useNowMs } from "@/src/lib/hooks/useNowMs";
+import { useQuery } from "convex/react";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
 import { OxBackButton } from "@/src/components/ui/OxBackButton";
 import { OxButton } from "@/src/components/ui/OxButton";
@@ -51,6 +58,24 @@ export default function ListingDetailScreen() {
           .filter((u): u is NonNullable<typeof u> => !!u)
       : [];
   const isOwner = user && listing && listing.ownerUserId === user.id;
+  const nowMs = useNowMs();
+
+  const isGuestMember =
+    !!listing &&
+    isAuthenticated &&
+    !!user &&
+    listing.members.includes(user.id) &&
+    isGuestForCollegeListing(user, listing.college);
+
+  const reviewState = useQuery(
+    api.collegeReviews.getListingReviewState,
+    isGuestMember && listing
+      ? { listingId: listing.id as Id<"listings">, nowMs }
+      : "skip",
+  );
+
+  const showReviewSection =
+    isGuestMember || !!reviewState?.existingReview;
 
   const incoming = user && listing
     ? incomingRequestsForListing(requests, user.id, listing.id)
@@ -119,6 +144,22 @@ export default function ListingDetailScreen() {
           owner={owner}
           memberUsers={memberUsers}
         />
+        {isGuestMember ? (
+          <ListingReviewHeaderIndicators
+            listing={listing}
+            nowMs={nowMs}
+            reviewState={reviewState}
+          />
+        ) : null}
+
+        {showReviewSection ? (
+          <View style={styles.reviewSection}>
+            <ReviewFormalSection
+              listingId={listing.id}
+              college={listing.college}
+            />
+          </View>
+        ) : null}
 
         {isOwner && (
           <View style={styles.section}>
@@ -216,4 +257,5 @@ const styles = StyleSheet.create({
   },
   requestCard: { marginBottom: 8 },
   actions: { marginTop: 8 },
+  reviewSection: { marginTop: SECTION_GAP },
 });

@@ -8,6 +8,7 @@ import type {
   ListingSummary,
   MessageReplySnapshot,
 } from "@/src/lib/chat/types";
+import { isPendingMessageId } from "@/src/lib/chat/types";
 
 export const UNAVAILABLE_LABEL = "Original message unavailable";
 
@@ -46,6 +47,9 @@ export function replyTargetSenderLabel(
 export function buildReplySnapshotFromMessage(
   message: ChatMessage,
 ): MessageReplySnapshot {
+  if (isPendingMessageId(message.id)) {
+    throw new Error("Cannot build reply snapshot from a pending message");
+  }
   return {
     id: message.id,
     senderUserId: message.senderUserId,

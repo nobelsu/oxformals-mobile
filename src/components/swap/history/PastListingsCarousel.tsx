@@ -28,9 +28,15 @@ const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 };
 
 type Props = {
   listings: Listing[];
+  pendingReviewSet?: Set<string>;
+  pendingAttendanceSet?: Set<string>;
 };
 
-export function PastListingsCarousel({ listings }: Props) {
+export function PastListingsCarousel({
+  listings,
+  pendingReviewSet = new Set(),
+  pendingAttendanceSet = new Set(),
+}: Props) {
   const router = useRouter();
   const { colors } = useOxTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -92,11 +98,13 @@ export function PastListingsCarousel({ listings }: Props) {
           profile={profile}
           memberUsers={members}
           compact
-          onViewRequests={() => router.push(`/listing/${listing.id}`)}
+          canConfirmAttendance={pendingAttendanceSet.has(listing.id)}
+          canRate={pendingReviewSet.has(listing.id)}
+          onPress={() => router.push(`/listing/${listing.id}`)}
         />
       );
     },
-    [getUser, profile, router],
+    [getUser, profile, router, pendingReviewSet, pendingAttendanceSet],
   );
 
   if (!user || listings.length === 0) return null;

@@ -9,6 +9,7 @@ import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useActiveConversation } from "@/src/hooks/useActiveConversation";
 import { chatGroupMembersHref } from "@/src/lib/chat/navigation";
 import { openProfile } from "@/src/lib/profile/navigation";
 import {
@@ -114,6 +115,10 @@ export default function ConversationScreen() {
   const router = useRouter();
   const { colors } = useOxTheme();
   const { user: currentUser } = useAuth();
+
+  useActiveConversation(
+    conversationId ? (conversationId as Id<"conversations">) : undefined,
+  );
 
   const conversation = useQuery(
     api.chat.getConversation,

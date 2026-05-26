@@ -1,10 +1,9 @@
 import { useAuth } from "@/src/components/auth/useAuth";
-import { useActiveChat } from "@/src/contexts/ActiveChatContext";
 import { chatText } from "@/src/components/chat/chatText";
 import { ChatComposer } from "@/src/components/chat/ChatComposer";
 import { ChatMessageRow } from "@/src/components/chat/ChatMessageRow";
 import { KeyboardDismissStrip } from "@/src/components/chat/KeyboardDismissStrip";
-import { useKeyboardVisible } from "@/src/components/chat/useKeyboardVisible";
+import { useKeyboardMetrics } from "@/src/components/chat/useKeyboardVisible";
 import { DoodleScrollDownButton } from "@/src/components/ui/DoodleScrollDownButton";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { SCREEN_PADDING } from "@/src/constants/layout";
@@ -13,20 +12,27 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { ChatDateDivider } from "@/src/components/chat/ChatDateDivider";
 import { ChatStickyDateHeader } from "@/src/components/chat/ChatStickyDateHeader";
 import { useStickyChatDate } from "@/src/components/chat/useStickyChatDate";
+import {
+  createOutboundClientId,
+  createOutboundEntry,
+  mergeOutboundWithServer,
+  outboundEntryToSendArgs,
+  type OutboundEntry,
+} from "@/src/lib/chat/outboundMessages";
 import { buildThreadItems, threadRowKey } from "@/src/lib/chat/threadItems";
 import {
   isGroupConversation,
-  type ChatMention,
+  isPendingMessageId,
   type ChatMessage,
+  type ChatSendArgs,
   type ConversationPreview,
 } from "@/src/lib/chat/types";
 import { useRouter } from "expo-router";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
-  KeyboardAvoidingView,
+  InteractionManager,
   Platform,
   StyleSheet,
   Text,
@@ -49,15 +55,16 @@ type Props = {
 export function ChatThread({ conversation }: Props) {
   const router = useRouter();
   const { user } = useAuth();
-  const { setActiveConversation } = useActiveChat();
   const { colors } = useOxTheme();
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const keyboardVisible = useKeyboardVisible();
-  const [sending, setSending] = useState(false);
+  const { visible: keyboardVisible, height: keyboardHeight } =
+    useKeyboardMetrics();
+  const [outbound, setOutbound] = useState<OutboundEntry[]>([]);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const [composerHeight, setComposerHeight] = useState(72);
   const listRef = useRef<FlatList>(null);
+  const scrollToLatestAfterLayoutRef = useRef(false);
 
   const sendMessage = useMutation(api.chat.sendMessage);
   const markRead = useMutation(api.chat.markConversationRead);
@@ -68,9 +75,14 @@ export function ChatThread({ conversation }: Props) {
     { initialNumItems: 30 },
   );
 
+  const displayMessages = useMemo(
+    () => mergeOutboundWithServer(messages, outbound),
+    [messages, outbound],
+  );
+
   const threadItems = useMemo(
-    () => buildThreadItems(messages),
-    [messages],
+    () => buildThreadItems(displayMessages),
+    [displayMessages],
   );
 
   const {
@@ -103,10 +115,27 @@ export function ChatThread({ conversation }: Props) {
     loadMore(20);
   }, [loadMore, status]);
 
-  const scrollToLatest = useCallback(() => {
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  const scrollToLatest = useCallback((animated = true) => {
+    listRef.current?.scrollToOffset({ offset: 0, animated });
     setAtBottom(true);
   }, []);
+
+  const requestScrollToLatestAfterLayout = useCallback(() => {
+    scrollToLatestAfterLayoutRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!scrollToLatestAfterLayoutRef.current) return;
+    scrollToLatestAfterLayoutRef.current = false;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        scrollToLatest(false);
+      });
+    });
+
+    return () => task.cancel();
+  }, [threadItems, scrollToLatest]);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -120,6 +149,7 @@ export function ChatThread({ conversation }: Props) {
   );
 
   const handleReply = useCallback((message: ChatMessage) => {
+    if (isPendingMessageId(message.id)) return;
     setReplyTarget(message);
   }, []);
 
@@ -142,17 +172,13 @@ export function ChatThread({ conversation }: Props) {
     ];
   }, [conversation]);
 
-  const handleSend = useCallback(
-    async (args: {
-      body: string;
-      mentions?: ChatMention[];
-      referencedListingId?: Id<"listings">;
-      replyToMessageId?: Id<"messages">;
-    }) => {
-      setSending(true);
+  const conversationId = conversation.id as Id<"conversations">;
+
+  const dispatchSend = useCallback(
+    async (clientId: string, args: ChatSendArgs) => {
       try {
-        await sendMessage({
-          conversationId: conversation.id as Id<"conversations">,
+        const messageId = await sendMessage({
+          conversationId,
           body: args.body,
           ...(args.mentions && args.mentions.length > 0
             ? { mentions: args.mentions }
@@ -164,31 +190,92 @@ export function ChatThread({ conversation }: Props) {
             ? { replyToMessageId: args.replyToMessageId }
             : {}),
         });
-        setReplyTarget(null);
-        scrollToLatest();
-      } finally {
-        setSending(false);
+        setOutbound((prev) =>
+          prev.map((entry) =>
+            entry.clientId === clientId
+              ? { ...entry, serverMessageId: messageId, status: "sending" }
+              : entry,
+          ),
+        );
+      } catch {
+        setOutbound((prev) =>
+          prev.map((entry) =>
+            entry.clientId === clientId
+              ? { ...entry, status: "failed" }
+              : entry,
+          ),
+        );
       }
     },
-    [conversation.id, scrollToLatest, sendMessage],
+    [conversationId, sendMessage],
   );
 
-  useEffect(() => {
-    void markRead({ conversationId: conversation.id as Id<"conversations"> });
-  }, [conversation.id, markRead]);
+  const handleSend = useCallback(
+    (args: ChatSendArgs) => {
+      const senderUserId = user?.id as Id<"users"> | undefined;
+      if (!senderUserId) return;
+
+      const clientId = createOutboundClientId();
+
+      const sendArgs: ChatSendArgs = {
+        body: args.body,
+        ...(args.mentions && args.mentions.length > 0
+          ? { mentions: args.mentions }
+          : {}),
+        ...(args.referencedListingId
+          ? {
+              referencedListingId: args.referencedListingId,
+              referencedListing: args.referencedListing,
+            }
+          : {}),
+        ...(args.replyToMessageId
+          ? { replyToMessageId: args.replyToMessageId }
+          : {}),
+        ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+      };
+
+      const entry = createOutboundEntry({
+        clientId,
+        conversationId,
+        senderUserId,
+        ...sendArgs,
+      });
+
+      setOutbound((prev) => [entry, ...prev]);
+      setReplyTarget(null);
+      requestScrollToLatestAfterLayout();
+      void dispatchSend(clientId, sendArgs);
+    },
+    [conversationId, dispatchSend, requestScrollToLatestAfterLayout, user?.id],
+  );
+
+  const handleRetry = useCallback(
+    (clientId: string) => {
+      const entry = outbound.find((e) => e.clientId === clientId);
+      if (!entry || entry.status !== "failed") return;
+      setOutbound((prev) =>
+        prev.map((e) =>
+          e.clientId === clientId ? { ...e, status: "sending" } : e,
+        ),
+      );
+      requestScrollToLatestAfterLayout();
+      void dispatchSend(clientId, outboundEntryToSendArgs(entry));
+    },
+    [dispatchSend, outbound, requestScrollToLatestAfterLayout],
+  );
+
+  const latestMessageId = messages[0]?.id ?? null;
 
   useEffect(() => {
-    const id = conversation.id as Id<"conversations">;
-    setActiveConversation(id);
-    return () => setActiveConversation(null);
-  }, [conversation.id, setActiveConversation]);
+    void markRead({ conversationId });
+  }, [conversationId, markRead, latestMessageId]);
+
+  const composerBottomInset = keyboardVisible
+    ? 8
+    : Math.max(insets.bottom, 12);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={headerHeight}
-    >
+    <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <View style={styles.listWrap}>
         {stickyLabel ? (
           <ChatStickyDateHeader label={stickyLabel} pushOffset={pushOffset} />
@@ -198,7 +285,9 @@ export function ChatThread({ conversation }: Props) {
           data={threadItems}
           inverted
           keyExtractor={threadRowKey}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          maintainVisibleContentPosition={
+            atBottom ? undefined : { minIndexForVisible: 0 }
+          }
           onScroll={handleScroll}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
@@ -210,9 +299,6 @@ export function ChatThread({ conversation }: Props) {
             Platform.OS === "ios" ? "interactive" : "on-drag"
           }
           removeClippedSubviews={false}
-          ListHeaderComponent={
-            <KeyboardDismissStrip enabled={keyboardVisible} />
-          }
           ItemSeparatorComponent={MessageSeparator}
           ListFooterComponent={
             status === "LoadingMore" ? (
@@ -249,48 +335,80 @@ export function ChatThread({ conversation }: Props) {
                 keyboardVisible={keyboardVisible}
                 onReply={handleReply}
                 onListingPress={openListingDetail}
+                onRetry={handleRetry}
               />
             );
           }}
           contentContainerStyle={[
             styles.list,
-            { paddingHorizontal: SCREEN_PADDING },
+            {
+              paddingHorizontal: SCREEN_PADDING,
+              paddingTop: composerHeight,
+            },
           ]}
+          style={[styles.listFill, { marginBottom: keyboardHeight }]}
         />
         {!atBottom && (
           <View style={styles.scrollFab} pointerEvents="box-none">
             <DoodleScrollDownButton
               seed={101}
               accessibilityLabel="Scroll to latest messages"
-              onPress={scrollToLatest}
+              onPress={() => scrollToLatest()}
             />
           </View>
         )}
       </View>
-      <KeyboardDismissStrip enabled={keyboardVisible} />
-      <ChatComposer
-        conversationId={conversation.id as Id<"conversations">}
-        defaultMentionUsers={defaultMentionUsers}
-        currentUserId={user?.id as Id<"users"> | undefined}
-        keyboardVisible={keyboardVisible}
-        replyTarget={replyTarget}
-        onCancelReply={handleDismissReply}
-        onListingPress={openListingDetail}
-        onSend={handleSend}
-        sending={sending}
-        composerStyle={{
-          paddingBottom: Math.max(insets.bottom, 12),
-          paddingHorizontal: SCREEN_PADDING,
+      <View
+        style={[
+          styles.composerDock,
+          { backgroundColor: colors.bg, bottom: keyboardHeight },
+        ]}
+        onLayout={(e) => {
+          const next = Math.ceil(e.nativeEvent.layout.height);
+          setComposerHeight((prev) => (prev === next ? prev : next));
         }}
-      />
-    </KeyboardAvoidingView>
+      >
+        {keyboardVisible ? (
+          <View style={styles.keyboardDismissOverlay} pointerEvents="box-none">
+            <KeyboardDismissStrip enabled />
+          </View>
+        ) : null}
+        <ChatComposer
+          conversationId={conversationId}
+          defaultMentionUsers={defaultMentionUsers}
+          currentUserId={user?.id as Id<"users"> | undefined}
+          keyboardVisible={keyboardVisible}
+          replyTarget={replyTarget}
+          onCancelReply={handleDismissReply}
+          onListingPress={openListingDetail}
+          onSend={handleSend}
+          composerStyle={{
+            paddingBottom: composerBottomInset,
+            paddingHorizontal: SCREEN_PADDING,
+          }}
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
   listWrap: { flex: 1 },
-  list: { paddingVertical: 12 },
+  listFill: { flex: 1 },
+  list: { paddingBottom: 12 },
+  composerDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+  },
+  keyboardDismissOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: -36,
+    height: 36,
+  },
   messageSeparator: { height: 4 },
   scrollFab: {
     position: "absolute",

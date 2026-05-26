@@ -1,5 +1,7 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { useData } from "@/src/components/data/useData";
+import { useListingsHubData } from "@/src/components/reviews/useListingsHubData";
+import { AttendedFormalsSection } from "@/src/components/swap/history/AttendedFormalsSection";
 import { HistoryEmptyState } from "@/src/components/swap/history/HistoryEmptyState";
 import { HistorySectionHeader } from "@/src/components/swap/history/HistorySectionHeader";
 import { PastListingsCarousel } from "@/src/components/swap/history/PastListingsCarousel";
@@ -27,6 +29,11 @@ export function HistoryTab() {
   const { user } = useAuth();
   const { requests } = useData();
   const pastListings = usePastListings();
+  const {
+    attendedPastListings,
+    pendingReviewSet,
+    pendingAttendanceSet,
+  } = useListingsHubData();
 
   const hasAnyRequests = useMemo(() => {
     if (!user) return false;
@@ -38,7 +45,10 @@ export function HistoryTab() {
 
   if (!user) return null;
 
-  const isEmpty = pastListings.length === 0 && !hasAnyRequests;
+  const isEmpty =
+    pastListings.length === 0 &&
+    attendedPastListings.length === 0 &&
+    !hasAnyRequests;
 
   return (
     <SafeAreaView
@@ -61,9 +71,19 @@ export function HistoryTab() {
               showSeeAll
               onSeeAll={() => router.push("/history/past-listings")}
             />
-            <PastListingsCarousel listings={pastListings} />
+            <PastListingsCarousel
+              listings={pastListings}
+              pendingReviewSet={pendingReviewSet}
+              pendingAttendanceSet={pendingAttendanceSet}
+            />
           </View>
         )}
+
+        <AttendedFormalsSection
+          attendedPastListings={attendedPastListings}
+          pendingReviewSet={pendingReviewSet}
+          pendingAttendanceSet={pendingAttendanceSet}
+        />
 
         {hasAnyRequests ? (
           <RequestsSection hasPastListings={pastListings.length > 0} />

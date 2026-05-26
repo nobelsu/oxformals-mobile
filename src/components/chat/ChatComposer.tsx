@@ -26,7 +26,12 @@ import {
   formatListingStatusLabel,
 } from "@/src/lib/data/format";
 import type { MentionParticipant } from "@/src/lib/chat/mentions";
-import type { ChatMention, ChatMessage, ListingSummary } from "@/src/lib/chat/types";
+import type {
+  ChatMessage,
+  ChatSendArgs,
+  ListingSummary,
+} from "@/src/lib/chat/types";
+import { isPendingMessageId } from "@/src/lib/chat/types";
 import { useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -42,13 +47,6 @@ import {
 import Svg, { Path } from "react-native-svg";
 import { buildWavyLinePath, STROKE_WIDTH } from "@/src/lib/ui/sketchStroke";
 
-type SendArgs = {
-  body: string;
-  mentions?: ChatMention[];
-  referencedListingId?: Id<"listings">;
-  replyToMessageId?: Id<"messages">;
-};
-
 type Props = {
   conversationId: Id<"conversations">;
   defaultMentionUsers?: MentionParticipant[];
@@ -57,8 +55,7 @@ type Props = {
   keyboardVisible?: boolean;
   onCancelReply?: () => void;
   onListingPress?: (listingId: Id<"listings">) => void;
-  onSend: (args: SendArgs) => Promise<void>;
-  sending?: boolean;
+  onSend: (args: ChatSendArgs) => void;
   composerStyle?: StyleProp<ViewStyle>;
   onComposerLayout?: (width: number) => void;
 };
@@ -72,7 +69,6 @@ export function ChatComposer({
   onCancelReply,
   onListingPress,
   onSend,
-  sending = false,
   composerStyle,
   onComposerLayout,
 }: Props) {
@@ -136,38 +132,45 @@ export function ChatComposer({
     }
   }, [refocusInput]);
 
-  const handleSend = useCallback(async () => {
-    if (!canSend || sending) return;
+  const handleSend = useCallback(() => {
+    if (!canSend) return;
     const serialized = composerRef.current?.serialize() ?? {
       body: "",
       mentions: [],
     };
     const text = serialized.body.trim();
     if (!text && !pendingListingRef) return;
-    await onSend({
-      body: text,
-      ...(serialized.mentions.length > 0
-        ? { mentions: serialized.mentions }
-        : {}),
-      ...(pendingListingRef
-        ? { referencedListingId: pendingListingRef.id }
-        : {}),
-      ...(replyTarget ? { replyToMessageId: replyTarget.id } : {}),
-    });
+
+    const listingSnapshot = pendingListingRef;
+    const replySnapshot =
+      replyTarget && !isPendingMessageId(replyTarget.id)
+        ? buildReplySnapshotFromMessage(replyTarget)
+        : undefined;
+
     composerRef.current?.clear();
     setDraftBody("");
     setEditorEmpty(true);
     setPendingListingRef(null);
     onCancelReply?.();
+
+    onSend({
+      body: text,
+      ...(serialized.mentions.length > 0
+        ? { mentions: serialized.mentions }
+        : {}),
+      ...(listingSnapshot
+        ? {
+            referencedListingId: listingSnapshot.id,
+            referencedListing: listingSnapshot,
+          }
+        : {}),
+      ...(replySnapshot
+        ? { replyToMessageId: replySnapshot.id, replyTo: replySnapshot }
+        : {}),
+    });
+
     composerRef.current?.focus();
-  }, [
-    canSend,
-    onCancelReply,
-    onSend,
-    pendingListingRef,
-    replyTarget,
-    sending,
-  ]);
+  }, [canSend, onCancelReply, onSend, pendingListingRef, replyTarget]);
 
   const composerLine =
     composerWidth > 0 ? buildWavyLinePath(composerWidth, 88) : "";
@@ -294,7 +297,6 @@ export function ChatComposer({
         />
         <DoodleSendButton
           accessibilityLabel="Send message"
-          loading={sending}
           seed={100}
           disabled={editorEmpty && !pendingListingRef}
           onPress={handleSend}
