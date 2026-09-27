@@ -73,6 +73,12 @@
       "reactCompiler": true,
       "tsconfigPaths": true
     },
-    "owner": "nobelsu"
+    "owner": "nobelsu",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b59e9c34-3826-4d1d-a57e-20f41fe4ef40"
+    }
   }
 }
