@@ -14,7 +14,6 @@ import {
 
 type Status = "hydrating" | "ready";
 const ADMIN_EMAIL = "admin@ox.ac.uk";
-const TEST_AUTH_EMAIL = process.env.EXPO_PUBLIC_AUTH_TEST_EMAIL?.trim().toLowerCase();
 
 function mapDocToUser(doc: Doc<"users">): User {
   return {
@@ -50,6 +49,8 @@ export type AuthContextValue = {
   authEmail: string | null;
   requestCode: (email: string) => Promise<SignInResult>;
   verifyCode: (email: string, code: string) => Promise<void>;
+  /** Sign in with a password already attached to the account (set on the web). */
+  signInWithPassword: (email: string, password: string) => Promise<void>;
   completeSignup: (input: SignupInput) => Promise<User>;
   signOut: () => Promise<void>;
   updateProfile: (
@@ -105,10 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const trimmed = email.trim();
       const normalizedEmail = trimmed.toLowerCase();
       const params = { email: trimmed };
-      if (TEST_AUTH_EMAIL && normalizedEmail === TEST_AUTH_EMAIL) {
-        await signInWithProvider("test-email", params);
-        return { status: "code-sent" as const, email: normalizedEmail };
-      }
       if (normalizedEmail === ADMIN_EMAIL) {
         await signInWithProvider("admin-email", params);
         return { status: "code-sent" as const, email: normalizedEmail };
@@ -124,15 +121,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const trimmedEmail = email.trim();
       const normalizedEmail = trimmedEmail.toLowerCase();
       const params = { email: trimmedEmail, code: code.trim() };
-      if (TEST_AUTH_EMAIL && normalizedEmail === TEST_AUTH_EMAIL) {
-        await signInWithProvider("test-email", params);
-        return;
-      }
       if (normalizedEmail === ADMIN_EMAIL) {
         await signInWithProvider("admin-email", params);
         return;
       }
       await signInWithProvider("resend", params);
+    },
+    [signInWithProvider],
+  );
+
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
+      await signInWithProvider("password", {
+        email: email.trim(),
+        password,
+        flow: "signIn",
+      });
     },
     [signInWithProvider],
   );
@@ -259,6 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authEmail,
       requestCode,
       verifyCode,
+      signInWithPassword,
       completeSignup,
       signOut,
       updateProfile,
@@ -273,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authEmail,
       requestCode,
       verifyCode,
+      signInWithPassword,
       completeSignup,
       signOut,
       updateProfile,

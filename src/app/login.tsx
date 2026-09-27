@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { AuthFormBlock } from "@/src/components/auth/AuthFormBlock";
 import { AuthScreenLayout } from "@/src/components/auth/AuthScreenLayout";
@@ -64,6 +65,7 @@ export default function LoginScreen() {
     authEmail,
     requestCode,
     verifyCode,
+    signInWithPassword,
     completeSignup,
   } = useAuth();
   const { ready: introReady, hasSeenIntro } = useIntroOnboarding();
@@ -72,8 +74,12 @@ export default function LoginScreen() {
   const [step, setStep] = useState<Step>("email");
   const emailRef = useRef<TextInput>(null);
   const codeRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [profile, setProfile] = useState<SignupProfileFormValues>(EMPTY_PROFILE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +166,35 @@ export default function LoginScreen() {
     }
   }
 
+  function switchToPassword(on: boolean) {
+    setError(null);
+    setUsePassword(on);
+    setPassword("");
+    setShowPassword(false);
+  }
+
+  async function handlePassword() {
+    if (submitting) return;
+    const normalized = email.trim().toLowerCase();
+    if (!isOxfordEmail(normalized)) {
+      setError("Use your Oxford email address ending in @ox.ac.uk.");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await signInWithPassword(normalized, password);
+    } catch {
+      setError("Incorrect email or password. Try again, or use an email code.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleCode(submittedCode?: string) {
     if (submitting) return;
     const trimmedCode = (submittedCode ?? code).trim();
@@ -240,7 +275,9 @@ export default function LoginScreen() {
   };
 
   const subtitles: Record<Step, string | undefined> = {
-    email: "Oxford email only. We'll send a one-time code.",
+    email: usePassword
+      ? "Oxford email and the password you set in Settings."
+      : "Oxford email only. We'll send a one-time code.",
     code: `6-digit code sent to ${email || "your email"}.`,
     profile: "So swap partners know who you are.",
   };
@@ -255,7 +292,89 @@ export default function LoginScreen() {
         if (s === "email" && layoutStep !== "email") goToStep("email");
       }}
     >
-      {!showProfileStep && step === "email" && (
+      {!showProfileStep && step === "email" && usePassword && (
+        <AuthFormBlock
+          error={error}
+          input={
+            <View>
+              <OxInput
+                ref={emailRef}
+                bare
+                placeholder="sso@ox.ac.uk"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+                textContentType="username"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+              />
+              <View style={styles.passwordRow}>
+                <View style={styles.passwordInput}>
+                  <OxInput
+                    ref={passwordRef}
+                    bare
+                    placeholder="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="current-password"
+                    textContentType="password"
+                    returnKeyType="go"
+                    onSubmitEditing={() => void handlePassword()}
+                  />
+                </View>
+                {password.length > 0 ? (
+                  <Pressable
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                    style={styles.eye}
+                  >
+                    <Ionicons
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={colors.inkMuted}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          }
+          action={
+            <OxButton
+              bare
+              title="Sign in"
+              loading={submitting}
+              onPress={() => void handlePassword()}
+            />
+          }
+          secondary={
+            <Pressable
+              onPress={() => switchToPassword(false)}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  authTypography.link,
+                  { color: colors.inkMuted, fontFamily: FONT_DISPLAY },
+                ]}
+              >
+                Use an email code instead
+              </Text>
+            </Pressable>
+          }
+        />
+      )}
+
+      {!showProfileStep && step === "email" && !usePassword && (
         <AuthFormBlock
           error={error}
           input={
@@ -281,26 +400,42 @@ export default function LoginScreen() {
             />
           }
           secondary={
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/onboarding",
-                  params: { review: "1" },
-                })
-              }
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Back to intro"
-            >
-              <Text
-                style={[
-                  authTypography.link,
-                  { color: colors.inkMuted, fontFamily: FONT_DISPLAY },
-                ]}
+            <View style={styles.codeSecondary}>
+              <Pressable
+                onPress={() => switchToPassword(true)}
+                hitSlop={8}
+                accessibilityRole="button"
               >
-                Back to intro
-              </Text>
-            </Pressable>
+                <Text
+                  style={[
+                    authTypography.link,
+                    { color: colors.inkMuted, fontFamily: FONT_DISPLAY },
+                  ]}
+                >
+                  Sign in with password
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/onboarding",
+                    params: { review: "1" },
+                  })
+                }
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Back to intro"
+              >
+                <Text
+                  style={[
+                    authTypography.link,
+                    { color: colors.inkMuted, fontFamily: FONT_DISPLAY },
+                  ]}
+                >
+                  Back to intro
+                </Text>
+              </Pressable>
+            </View>
           }
         />
       )}
@@ -408,6 +543,16 @@ const styles = StyleSheet.create({
     gap: space[2],
     alignItems: "center",
     width: "100%",
+  },
+  passwordRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  passwordInput: {
+    flex: 1,
+  },
+  eye: {
+    paddingHorizontal: space[2],
   },
   codeField: {
     fontSize: 22,
