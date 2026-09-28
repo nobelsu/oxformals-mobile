@@ -1,4 +1,5 @@
 import { useAuth } from "@/src/components/auth/useAuth";
+import { DeleteAccountSheet } from "@/src/components/settings/DeleteAccountSheet";
 import { PushPermissionPromptModal } from "@/src/components/push/PushPermissionPromptModal";
 import { usePushNotificationActions } from "@/src/components/push/PushNotificationProvider";
 import { Chip } from "@/src/components/ui/Chip";
@@ -32,6 +33,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   const settingsOverlayBusy =
     themeBusy || wishlistBusy || (pushBusy && pushEnabled);
   const [showPushPermissionPrompt, setShowPushPermissionPrompt] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const pushEnabled = user?.pushChatAlerts !== false;
 
@@ -144,7 +146,21 @@ export function SettingsModal({ visible, onClose }: Props) {
         }}
         style={{ marginTop: space[6] }}
       />
+      <OxButton
+        title="Delete account"
+        variant="ghost"
+        onPress={() => {
+          onClose();
+          // iOS can't present a second modal until the first has dismissed.
+          setTimeout(() => setShowDeleteAccount(true), 400);
+        }}
+        style={{ marginTop: space[2] }}
+      />
       </OxModal>
+      <DeleteAccountSheet
+        visible={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+      />
       <PushPermissionPromptModal
         visible={showPushPermissionPrompt}
         onClose={() => setShowPushPermissionPrompt(false)}
