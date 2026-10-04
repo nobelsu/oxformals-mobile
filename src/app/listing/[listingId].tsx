@@ -105,17 +105,22 @@ export default function ListingDetailScreen() {
   const activeListingId = listing.id;
 
   function confirmDeleteListing() {
+    const guests = listing ? listing.members.length - 1 : 0;
+    const guestNote =
+      guests > 0
+        ? ` Your ${guests === 1 ? "guest" : `${guests} guests`} will be told, any credits are refunded and linked swaps are undone.`
+        : "";
     const pendingNote =
       pending.length > 0
         ? ` ${pending.length} pending request${pending.length === 1 ? "" : "s"} will be declined.`
         : "";
     Alert.alert(
-      "Delete listing",
-      `This permanently removes your listing and cannot be undone.${pendingNote}`,
+      "Cancel this formal?",
+      `This removes your listing and can't be undone.${guestNote}${pendingNote}`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "Keep it", style: "cancel" },
         {
-          text: "Delete",
+          text: "Cancel formal",
           style: "destructive",
           onPress: () => {
             deleteListing(activeListingId);

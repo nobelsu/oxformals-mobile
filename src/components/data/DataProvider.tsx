@@ -13,6 +13,7 @@ import type {
   RequestType,
   SwapRequest,
 } from "@/src/lib/data/types";
+import { errorMessage } from "@/src/lib/errorMessage";
 import { useMutation, useQuery } from "convex/react";
 import {
   createContext,
@@ -20,6 +21,12 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import { Alert } from "react-native";
+
+/** Tell the person why a background action didn't go through. */
+function reportFailure(title: string) {
+  return (error: unknown) => Alert.alert(title, errorMessage(error));
+}
 
 export type DataContextValue = {
   ready: boolean;
@@ -112,9 +119,13 @@ function mapListing(doc: ConvexListingDoc): Listing {
       ? { menuFileContentType: doc.menuFileContentType }
       : {}),
     listingType: doc.listingType ?? "swap",
+    formalType: doc.formalType ?? "social",
     ...(doc.price !== undefined ? { price: doc.price } : {}),
     status: doc.status,
     createdAt: doc._creationTime,
+    ...(doc.guestSeats && doc.guestSeats.length > 0
+      ? { guestSeats: doc.guestSeats }
+      : {}),
   };
 }
 
@@ -133,6 +144,7 @@ function mapRequest(doc: Doc<"requests">): SwapRequest {
     message: doc.message,
     status: doc.status,
     createdAt: doc._creationTime,
+    ...(doc.party && doc.party.length > 0 ? { party: doc.party } : {}),
   };
 }
 
@@ -151,11 +163,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     user ? {} : "skip",
   );
 
+  // listPublic leaves out private accounts you don't follow, so hosts, group
+  // members and request counterparties are looked up by id (limited record).
   const requestPartyIds = useMemo(() => {
-    if (incomingRequests === undefined && outgoingRequests === undefined) {
-      return [] as Id<"users">[];
-    }
     const ids = new Set<Id<"users">>();
+    const listed = new Set((convexUsers ?? []).map((u) => u._id));
+    for (const listing of convexListings ?? []) {
+      for (const id of [listing.ownerUserId, ...listing.members]) {
+        if (!listed.has(id)) ids.add(id);
+      }
+    }
     for (const req of incomingRequests ?? []) {
       ids.add(req.fromUserId);
       ids.add(req.toUserId);
@@ -164,8 +181,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ids.add(req.fromUserId);
       ids.add(req.toUserId);
     }
-    return [...ids];
-  }, [incomingRequests, outgoingRequests]);
+    for (const req of [...(incomingRequests ?? []), ...(outgoingRequests ?? [])]) {
+      for (const seat of req.party ?? []) {
+        if (seat.userId) ids.add(seat.userId);
+      }
+    }
+    // The lookup takes 100 ids at most.
+    return [...ids].sort().slice(0, 100);
+  }, [convexUsers, convexListings, incomingRequests, outgoingRequests]);
 
   const requestPartyUsers = useQuery(
     api.users.getPublicByIds,
@@ -244,8 +267,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const college = normalizeCollegeName(user.college);
       const year = user.year.trim();
       const role = user.role.trim();
-      if (!college || !year || !role) return null;
-      void createListingMut({
+      // Fellows have no year.
+      if (!college || !role || (!year && role !== "Fellow")) return null;
+      createListingMut({
         dateTime: input.dateTime,
         groupSize: input.groupSize,
         message: input.message,
@@ -255,7 +279,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? { menuPdfId: input.menuPdfId as Id<"_storage"> }
           : {}),
         ...(input.price !== undefined ? { price: input.price } : {}),
-      });
+      }).catch(reportFailure("Couldn't list your formal"));
       return {
         id: "pending",
         ownerUserId: user.id,
@@ -269,6 +293,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         message: input.message,
         menu: input.menu,
         listingType: input.listingType,
+        formalType: "social",
         ...(input.price !== undefined ? { price: input.price } : {}),
         status: "active",
         createdAt: Date.now(),
@@ -300,9 +325,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           message: args.message,
         });
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Could not send request.";
-        throw new Error(message);
+        throw new Error(errorMessage(err, "Could not send request."));
       }
       if (args.message.trim()) {
         try {
@@ -362,7 +385,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!req || req.toUserId !== user.id || req.status !== "pending") {
         return null;
       }
-      void acceptRequestMut({ requestId: requestId as Id<"requests"> });
+      acceptRequestMut({ requestId: requestId as Id<"requests"> }).catch(
+        reportFailure("Couldn't accept this request"),
+      );
       return { ...req, status: "accepted" };
     },
     [user, requests, acceptRequestMut],
@@ -373,7 +398,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!user) return;
       const req = requests.find((r) => r.id === requestId);
       if (!req || req.toUserId !== user.id || req.status !== "pending") return;
-      void declineRequestMut({ requestId: requestId as Id<"requests"> });
+      declineRequestMut({ requestId: requestId as Id<"requests"> }).catch(
+        reportFailure("Couldn't decline this request"),
+      );
     },
     [user, requests, declineRequestMut],
   );
@@ -385,7 +412,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!req || req.fromUserId !== user.id || req.status !== "pending") {
         return false;
       }
-      void withdrawRequestMut({ requestId: requestId as Id<"requests"> });
+      withdrawRequestMut({ requestId: requestId as Id<"requests"> }).catch(
+        reportFailure("Couldn't withdraw this request"),
+      );
       return true;
     },
     [user, requests, withdrawRequestMut],
@@ -412,9 +441,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ...(patch.price !== undefined ? { price: patch.price } : {}),
         });
       } catch (e) {
-        throw new Error(
-          e instanceof Error ? e.message : "Could not update listing.",
-        );
+        throw new Error(errorMessage(e, "Could not update listing."));
       }
     },
     [user, updateListingMut],
@@ -423,7 +450,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteListing = useCallback(
     (listingId: string) => {
       if (!user) return;
-      void deleteListingMut({ listingId: listingId as Id<"listings"> });
+      deleteListingMut({ listingId: listingId as Id<"listings"> }).catch(
+        reportFailure("Couldn't cancel this formal"),
+      );
     },
     [user, deleteListingMut],
   );
@@ -431,7 +460,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const leaveGroup = useCallback(
     (listingId: string) => {
       if (!user) return;
-      void leaveGroupMut({ listingId: listingId as Id<"listings"> });
+      leaveGroupMut({ listingId: listingId as Id<"listings"> }).catch(
+        reportFailure("Couldn't leave this formal"),
+      );
     },
     [user, leaveGroupMut],
   );
@@ -439,10 +470,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeMember = useCallback(
     (listingId: string, memberId: string) => {
       if (!user) return;
-      void removeMemberMut({
+      removeMemberMut({
         listingId: listingId as Id<"listings">,
         memberId: memberId as Id<"users">,
-      });
+      }).catch(reportFailure("Couldn't remove this guest"));
     },
     [user, removeMemberMut],
   );

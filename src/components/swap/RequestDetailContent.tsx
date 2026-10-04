@@ -14,10 +14,11 @@ import { formatRelativeTime } from "@/src/lib/data/format";
 import { resolveRequestType } from "@/src/lib/data/requestFilters";
 import type { Listing, SwapRequest } from "@/src/lib/data/types";
 import { openProfile } from "@/src/lib/profile/navigation";
+import { errorMessage } from "@/src/lib/errorMessage";
 import { useMutation } from "convex/react";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { ListingCard } from "./ListingCard";
 import { RequestTypeTag } from "./RequestTypeTag";
 
@@ -75,6 +76,8 @@ export function RequestDetailContent({
         otherUserId: counterparty.id as Id<"users">,
       });
       router.push(chatConversationHref(conversationId));
+    } catch (error) {
+      Alert.alert("Couldn't open this chat", errorMessage(error));
     } finally {
       setMessaging(false);
     }

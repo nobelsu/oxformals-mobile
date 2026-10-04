@@ -142,6 +142,7 @@ export default function ProfileScreen() {
               message: l.message ?? "",
               menu: "",
               listingType: l.listingType ?? "swap",
+              formalType: l.formalType ?? "social",
               ...(l.price !== undefined ? { price: l.price } : {}),
               status: l.status,
               createdAt: Date.now(),

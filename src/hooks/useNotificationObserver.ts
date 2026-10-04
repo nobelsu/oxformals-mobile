@@ -4,6 +4,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   CHAT_PUSH_REPLY_ACTION_ID,
 } from "@/src/lib/push/chatNotificationCategory";
+import { notificationHref } from "@/src/lib/push/notificationHref";
 import { useMutation } from "convex/react";
 import * as Notifications from "expo-notifications";
 import { type Href, router } from "expo-router";
@@ -12,10 +13,8 @@ import { useCallback, useEffect, useRef } from "react";
 function redirectFromNotification(
   notification: Notifications.Notification,
 ): void {
-  const url = notification.request.content.data?.url;
-  if (typeof url === "string" && url.startsWith("/")) {
-    router.push(url as Href);
-  }
+  const href = notificationHref(notification.request.content.data?.url);
+  if (href) router.push(href as Href);
 }
 
 function getConversationIdFromNotification(

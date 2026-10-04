@@ -58,7 +58,11 @@ export function ListFormalForm(props: Props) {
   const { onSubmit, onCancel } = props;
   const isEdit = props.mode === "edit";
   const initialListing = isEdit ? props.initialListing : undefined;
-  const minGroupSize = isEdit ? initialListing!.members.length : 1;
+  // Seats already taken: members plus the unnamed guests they brought.
+  const minGroupSize = isEdit
+    ? initialListing!.members.length +
+      (initialListing!.guestSeats ?? []).reduce((n, g) => n + g.count, 0)
+    : 1;
 
   const { user } = useAuth();
   const { colors } = useOxTheme();

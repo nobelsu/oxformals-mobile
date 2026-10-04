@@ -194,7 +194,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         subject?: string;
         uiFont?: User["uiFont"];
         avatar?: User["avatar"] | null;
-        emailWishlistAlerts?: boolean;
       } = {};
 
       if (patch.name !== undefined) payload.name = patch.name;
@@ -215,9 +214,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (patch.uiFont !== undefined) payload.uiFont = patch.uiFont;
       if (Object.prototype.hasOwnProperty.call(patch, "avatar")) {
         payload.avatar = patch.avatar ?? null;
-      }
-      if (patch.emailWishlistAlerts !== undefined) {
-        payload.emailWishlistAlerts = patch.emailWishlistAlerts;
       }
 
       if (Object.keys(payload).length === 0) return user;
@@ -242,8 +238,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatar: Object.prototype.hasOwnProperty.call(patch, "avatar")
           ? patch.avatar
           : user.avatar,
-        emailWishlistAlerts:
-          patch.emailWishlistAlerts ?? user.emailWishlistAlerts,
       };
     },
     [status, jwtAuthenticated, user, patchProfileMut],

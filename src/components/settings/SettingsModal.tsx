@@ -27,15 +27,13 @@ export function SettingsModal({ visible, onClose }: Props) {
   const { colors, uiFont } = useOxTheme();
   const router = useRouter();
   const [themeBusy, setThemeBusy] = useState(false);
-  const [wishlistBusy, setWishlistBusy] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
-  // Overlay only when disabling push — enabling may show the system or settings prompt.
-  const settingsOverlayBusy =
-    themeBusy || wishlistBusy || (pushBusy && pushEnabled);
   const [showPushPermissionPrompt, setShowPushPermissionPrompt] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const pushEnabled = user?.pushChatAlerts !== false;
+  // Overlay only when disabling push — enabling may show the system or settings prompt.
+  const settingsOverlayBusy = themeBusy || (pushBusy && pushEnabled);
 
   const handleThemeChange = useCallback(
     async (id: UiFontId) => {
@@ -75,33 +73,6 @@ export function SettingsModal({ visible, onClose }: Props) {
           />
         ))}
       </View>
-      {user?.emailWishlistAlerts !== undefined && (
-        <View style={{ marginTop: 20 }}>
-          <Chip
-            label={
-              user.emailWishlistAlerts
-                ? "Wishlist emails: on"
-                : "Wishlist emails: off"
-            }
-            onPress={
-              wishlistBusy
-                ? undefined
-                : () => {
-                    void (async () => {
-                      setWishlistBusy(true);
-                      try {
-                        await updateProfile({
-                          emailWishlistAlerts: !user.emailWishlistAlerts,
-                        });
-                      } finally {
-                        setWishlistBusy(false);
-                      }
-                    })();
-                  }
-            }
-          />
-        </View>
-      )}
       {user && (
         <View style={{ marginTop: 20 }}>
           <Chip
