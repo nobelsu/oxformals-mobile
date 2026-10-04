@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { areFriends, makeFriends } from "./follows";
 import { optionalUserId, requireActiveUser } from "./guards";
@@ -32,7 +32,7 @@ export const getOrCreateMyInviteCode = mutation({
       await ctx.db.insert("inviteCodes", { userId, code, createdAt: Date.now() });
       return code;
     }
-    throw new Error("Couldn't make your invite link. Try again.");
+    throw new ConvexError("Couldn't make your invite link. Try again.");
   },
 });
 

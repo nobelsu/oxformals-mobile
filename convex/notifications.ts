@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -286,7 +286,7 @@ export const saveWebPushSubscription = mutation({
   handler: async (ctx, { endpoint, p256dh, auth }) => {
     const { userId } = await requireActiveUser(ctx);
     if (!endpoint.startsWith("https://") || endpoint.length > 1000) {
-      throw new Error("That isn't a push subscription.");
+      throw new ConvexError("That isn't a push subscription.");
     }
     const existing = await ctx.db
       .query("webPushSubscriptions")

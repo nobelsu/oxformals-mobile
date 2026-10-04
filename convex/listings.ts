@@ -1,6 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { blockedEitherWay, blockedIdsFor } from "./blocks";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
@@ -136,12 +136,12 @@ function validateListingTypeAndPrice(
 ): void {
   if (listingType === "swap") {
     if (price !== undefined) {
-      throw new Error("Swap listings cannot have a price.");
+      throw new ConvexError("Swap listings cannot have a price.");
     }
     return;
   }
   if (price === undefined || !Number.isInteger(price) || price < 1) {
-    throw new Error("Enter a whole number of pounds (at least £1).");
+    throw new ConvexError("Enter a whole number of pounds (at least £1).");
   }
 }
 
@@ -171,7 +171,7 @@ async function getListingOrThrow(
   listingId: Id<"listings">,
 ): Promise<Doc<"listings">> {
   const listing = await ctx.db.get(listingId);
-  if (!listing) throw new Error("Listing not found");
+  if (!listing) throw new ConvexError("Listing not found");
   return listing;
 }
 
@@ -360,18 +360,18 @@ export const createListing = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const user = await ctx.db.get(userId);
-    if (!user) throw new Error("User profile not found");
+    if (!user) throw new ConvexError("User profile not found");
 
     const college = user.college?.trim() ?? "";
     const role = user.role?.trim() ?? "";
     const year = roleNeedsYear(role) ? (user.year?.trim() ?? "") : "";
     if (!college || !role || (roleNeedsYear(role) && !year)) {
-      throw new Error("Set college, year, and role in your profile before posting.");
+      throw new ConvexError("Set college, year, and role in your profile before posting.");
     }
 
     const timestamp = Date.parse(args.dateTime);
     if (Number.isNaN(timestamp)) {
-      throw new Error("Invalid listing date.");
+      throw new ConvexError("Invalid listing date.");
     }
 
     validateListingTypeAndPrice(args.listingType, args.price);
@@ -465,16 +465,16 @@ export const createRequest = mutation({
     const targetType = resolveListingType(target);
 
     if (target.status !== "active") {
-      throw new Error("This listing is no longer active.");
+      throw new ConvexError("This listing is no longer active.");
     }
     if (listingIsPast(target.dateTime, Date.now())) {
-      throw new Error("This formal has passed.");
+      throw new ConvexError("This formal has passed.");
     }
     if (target.ownerUserId === userId) {
-      throw new Error("You cannot request your own listing.");
+      throw new ConvexError("You cannot request your own listing.");
     }
     if (await blockedEitherWay(ctx, userId, target.ownerUserId)) {
-      throw new Error("This listing is no longer available.");
+      throw new ConvexError("This listing is no longer available.");
     }
 
     const guests = args.guests ?? 0;
@@ -485,33 +485,33 @@ export const createRequest = mutation({
       guests < 0 ||
       guests + friends.length + links.length > MAX_GUESTS
     ) {
-      throw new Error(`You can bring up to ${MAX_GUESTS} people.`);
+      throw new ConvexError(`You can bring up to ${MAX_GUESTS} people.`);
     }
     for (const l of links) {
       if (l.paysOwn && l.method !== "credit") {
-        throw new Error("Someone new can only pay for themselves with a credit.");
+        throw new ConvexError("Someone new can only pay for themselves with a credit.");
       }
     }
     if (args.guestMethods && args.guestMethods.length !== guests) {
-      throw new Error("Each guest needs a way to pay.");
+      throw new ConvexError("Each guest needs a way to pay.");
     }
     const seen = new Set<string>();
     for (const f of friends) {
-      if (f.userId === userId) throw new Error("You're already in your own request.");
+      if (f.userId === userId) throw new ConvexError("You're already in your own request.");
       if (f.userId === target.ownerUserId) {
-        throw new Error("The host is already going.");
+        throw new ConvexError("The host is already going.");
       }
-      if (seen.has(f.userId)) throw new Error("You've named someone twice.");
+      if (seen.has(f.userId)) throw new ConvexError("You've named someone twice.");
       seen.add(f.userId);
       if (!(await areFriends(ctx, userId, f.userId))) {
-        throw new Error("You can only name people you follow who follow you back.");
+        throw new ConvexError("You can only name people you follow who follow you back.");
       }
       if (target.members.includes(f.userId)) {
         const friend = await ctx.db.get(f.userId);
-        throw new Error(`${friend?.name?.split(" ")[0] ?? "They"}'re already going.`);
+        throw new ConvexError(`${friend?.name?.split(" ")[0] ?? "They"}'re already going.`);
       }
       if (f.paysOwn && f.method === "swap") {
-        throw new Error("Friends paying for themselves can use a credit or cash.");
+        throw new ConvexError("Friends paying for themselves can use a credit or cash.");
       }
     }
     const now = Date.now();
@@ -549,7 +549,7 @@ export const createRequest = mutation({
     const seats = requestSeats(draft);
 
     if (seats.length > target.seatsAvailable) {
-      throw new Error(
+      throw new ConvexError(
         target.seatsAvailable === 1
           ? "There's only 1 seat left."
           : `There are only ${target.seatsAvailable} seats left.`,
@@ -557,7 +557,7 @@ export const createRequest = mutation({
     }
     for (const seat of seats) {
       if (!listingAllowsRequestType(targetType, seat.method)) {
-        throw new Error("This listing does not accept that type of request.");
+        throw new ConvexError("This listing does not accept that type of request.");
       }
     }
 
@@ -572,7 +572,7 @@ export const createRequest = mutation({
         (item.status === "pending" || item.status === "accepted"),
     );
     if (blockingForTarget) {
-      throw new Error(
+      throw new ConvexError(
         blockingForTarget.status === "accepted"
           ? "You already have an accepted request for this listing. You cannot send another."
           : "You already have a request waiting for a reply on this listing. Withdraw it before sending another.",
@@ -589,7 +589,7 @@ export const createRequest = mutation({
     if (myCreditSeats > 0) {
       const balance = await creditBalance(ctx, userId);
       if (balance < myCreditSeats) {
-        throw new Error(
+        throw new ConvexError(
           balance === 0
             ? "You don't have any credits. Host a guest at your college's formal to earn one."
             : `That needs ${myCreditSeats} credits and you have ${balance}.`,
@@ -600,31 +600,31 @@ export const createRequest = mutation({
     const swapSeats = countByMethod(seats, "swap");
     if (swapSeats > 0) {
       if (!args.offeringListingId) {
-        throw new Error("Swap requests must include an offering listing.");
+        throw new ConvexError("Swap requests must include an offering listing.");
       }
       if (args.targetListingId === args.offeringListingId) {
-        throw new Error("You must offer a different listing.");
+        throw new ConvexError("You must offer a different listing.");
       }
       const offering = await getListingOrThrow(ctx, args.offeringListingId);
       if (offering.status !== "active") {
-        throw new Error("Your offering listing must be active.");
+        throw new ConvexError("Your offering listing must be active.");
       }
       if (listingIsPast(offering.dateTime, Date.now())) {
-        throw new Error("Your offering formal has passed.");
+        throw new ConvexError("Your offering formal has passed.");
       }
       if (offering.ownerUserId !== userId) {
-        throw new Error("You can only offer your own listing.");
+        throw new ConvexError("You can only offer your own listing.");
       }
       if (!listingSupportsSwap(resolveListingType(offering))) {
-        throw new Error("Pay listings cannot be used in a swap.");
+        throw new ConvexError("Pay listings cannot be used in a swap.");
       }
       if (offering.seatsAvailable < swapSeats) {
-        throw new Error(
+        throw new ConvexError(
           `Swapping ${swapSeats} seats needs ${swapSeats} free seats at your formal, and it has ${offering.seatsAvailable}.`,
         );
       }
     } else if (args.offeringListingId !== undefined) {
-      throw new Error("Only swap requests include an offering listing.");
+      throw new ConvexError("Only swap requests include an offering listing.");
     }
 
     // Two hosts who each asked for the other's formal: the earlier request
@@ -725,9 +725,9 @@ export const declineRequest = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const req = await ctx.db.get(args.requestId);
-    if (!req) throw new Error("Request not found");
-    if (req.toUserId !== userId) throw new Error("Not allowed");
-    if (req.status !== "pending") throw new Error("Request is no longer pending");
+    if (!req) throw new ConvexError("Request not found");
+    if (req.toUserId !== userId) throw new ConvexError("Not allowed");
+    if (req.status !== "pending") throw new ConvexError("Request is no longer pending");
 
     await ctx.db.patch(req._id, { status: "declined" });
     await notifyDeclined(ctx, req);
@@ -740,9 +740,9 @@ export const withdrawRequest = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const req = await ctx.db.get(args.requestId);
-    if (!req) throw new Error("Request not found");
-    if (req.fromUserId !== userId) throw new Error("Not allowed");
-    if (req.status !== "pending") throw new Error("Request is no longer pending");
+    if (!req) throw new ConvexError("Request not found");
+    if (req.fromUserId !== userId) throw new ConvexError("Not allowed");
+    if (req.status !== "pending") throw new ConvexError("Request is no longer pending");
 
     for (const invite of await ctx.db
       .query("partyInvites")
@@ -830,13 +830,13 @@ async function assertCanAcceptRequest(
   const target = await getListingOrThrow(ctx, req.targetListingId);
 
   if (target.status !== "active") {
-    throw new Error("Your listing is no longer active, so this request can't be accepted.");
+    throw new ConvexError("Your listing is no longer active, so this request can't be accepted.");
   }
   if (listingIsPast(target.dateTime, Date.now())) {
-    throw new Error("This formal has passed, so this request can't be accepted.");
+    throw new ConvexError("This formal has passed, so this request can't be accepted.");
   }
   if (target.seatsAvailable < seats.length) {
-    throw new Error(
+    throw new ConvexError(
       target.seatsAvailable <= 0
         ? "Your listing has no seats left, so this request can't be accepted."
         : `This request needs ${seats.length} seats and your listing has ${target.seatsAvailable} left.`,
@@ -844,12 +844,12 @@ async function assertCanAcceptRequest(
   }
   for (const seat of seats) {
     if (seat.userId && target.members.includes(seat.userId)) {
-      throw new Error("Someone in this request is already in your group.");
+      throw new ConvexError("Someone in this request is already in your group.");
     }
   }
   const unclaimed = unclaimedLinkSeats(req);
   if (unclaimed > 0) {
-    throw new Error(
+    throw new ConvexError(
       unclaimed === 1
         ? "Waiting for someone in this group to join Oxformals."
         : `Waiting for ${unclaimed} people in this group to join Oxformals.`,
@@ -861,7 +861,7 @@ async function assertCanAcceptRequest(
     if (p.kind !== "friend" || p.response === "out" || !p.userId) continue;
     if (p.payerId === p.userId && p.response !== "in") {
       const friend = await ctx.db.get(p.userId);
-      throw new Error(
+      throw new ConvexError(
         `Waiting for ${friend?.name?.split(" ")[0] ?? "a friend"} to confirm they're coming.`,
       );
     }
@@ -873,29 +873,29 @@ async function assertCanAcceptRequest(
   }
 
   if (!req.offeringListingId) {
-    throw new Error("Swap request is missing an offering listing.");
+    throw new ConvexError("Swap request is missing an offering listing.");
   }
 
   const offering = await getListingOrThrow(ctx, req.offeringListingId);
   if (offering.status !== "active") {
-    throw new Error(
+    throw new ConvexError(
       "Their offering listing is no longer active, so this swap can't be accepted.",
     );
   }
   if (listingIsPast(offering.dateTime, Date.now())) {
-    throw new Error(
+    throw new ConvexError(
       "Their offering formal has passed, so this swap can't be accepted.",
     );
   }
   if (offering.seatsAvailable < swapSeats) {
-    throw new Error(
+    throw new ConvexError(
       offering.seatsAvailable <= 0
         ? "Their offering listing has no seats left, so this swap can't be accepted."
         : `This swap needs ${swapSeats} seats at their formal and it has ${offering.seatsAvailable} left.`,
     );
   }
   if (offering.members.includes(req.toUserId)) {
-    throw new Error("You're already in their group.");
+    throw new ConvexError("You're already in their group.");
   }
 
   return { target, offering };
@@ -973,9 +973,9 @@ export const acceptRequest = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const req = await ctx.db.get(args.requestId);
-    if (!req) throw new Error("Request not found");
-    if (req.toUserId !== userId) throw new Error("Not allowed");
-    if (req.status !== "pending") throw new Error("Request is no longer pending");
+    if (!req) throw new ConvexError("Request not found");
+    if (req.toUserId !== userId) throw new ConvexError("Not allowed");
+    if (req.status !== "pending") throw new ConvexError("Request is no longer pending");
 
     await performAccept(ctx, req);
 
@@ -1031,10 +1031,10 @@ export const releaseGuestSeat = mutation({
     const userId = await requireUserId(ctx);
     const listing = await getListingOrThrow(ctx, args.listingId);
     if (guestsBroughtBy(listing, userId) === 0) {
-      throw new Error("You don't have a guest seat here.");
+      throw new ConvexError("You don't have a guest seat here.");
     }
     if (listingIsPast(listing.dateTime, Date.now())) {
-      throw new Error("This formal has already happened.");
+      throw new ConvexError("This formal has already happened.");
     }
     const newSeats = listing.seatsAvailable + 1;
     await ctx.db.patch(args.listingId, {
@@ -1059,13 +1059,13 @@ export const removeMember = mutation({
     const listing = await getListingOrThrow(ctx, args.listingId);
 
     if (listing.ownerUserId !== userId) {
-      throw new Error("Only the owner can remove members.");
+      throw new ConvexError("Only the owner can remove members.");
     }
     if (args.memberId === userId) {
-      throw new Error("The owner cannot remove themselves.");
+      throw new ConvexError("The owner cannot remove themselves.");
     }
     if (!listing.members.includes(args.memberId)) {
-      throw new Error("User is not a member of this group.");
+      throw new ConvexError("User is not a member of this group.");
     }
 
     const link = await swapSeatingMember(ctx, args.listingId, args.memberId);
@@ -1122,7 +1122,7 @@ export const updateListing = mutation({
     const listing = await getListingOrThrow(ctx, args.listingId);
 
     if (listing.ownerUserId !== userId) {
-      throw new Error("Only the owner can edit a listing.");
+      throw new ConvexError("Only the owner can edit a listing.");
     }
 
     const pendingOnListing = await ctx.db
@@ -1132,13 +1132,13 @@ export const updateListing = mutation({
       )
       .take(1);
     if (pendingOnListing.length > 0) {
-      throw new Error(
+      throw new ConvexError(
         "Cannot edit listing while there are pending requests.",
       );
     }
 
     if (listingIsPast(listing.dateTime, Date.now())) {
-      throw new Error("Cannot edit a completed listing.");
+      throw new ConvexError("Cannot edit a completed listing.");
     }
 
     const patch: Partial<Doc<"listings">> = {};
@@ -1146,12 +1146,12 @@ export const updateListing = mutation({
     if (args.dateTime !== undefined) {
       const timestamp = Date.parse(args.dateTime);
       if (Number.isNaN(timestamp)) {
-        throw new Error("Invalid listing date.");
+        throw new ConvexError("Invalid listing date.");
       }
       const nextDateTime = new Date(timestamp).toISOString();
       if (nextDateTime !== listing.dateTime) {
         if (occupiedSeats(listing) > 1) {
-          throw new Error(
+          throw new ConvexError(
             "You can't change the date once people have joined. Cancel the formal instead.",
           );
         }
@@ -1162,7 +1162,7 @@ export const updateListing = mutation({
     if (args.groupSize !== undefined) {
       const occupied = occupiedSeats(listing);
       if (args.groupSize < occupied) {
-        throw new Error(
+        throw new ConvexError(
           "Group size cannot be less than the number of people already going.",
         );
       }
@@ -1367,7 +1367,7 @@ export const deleteListing = mutation({
     const listing = await getListingOrThrow(ctx, args.listingId);
 
     if (listing.ownerUserId !== userId) {
-      throw new Error("Only the owner can delete a listing.");
+      throw new ConvexError("Only the owner can delete a listing.");
     }
 
     await declinePendingRequestsForListing(ctx, args.listingId);

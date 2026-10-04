@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { optionalUserId, requireActiveUser } from "./guards";
 import { visibleUser } from "./userVisibility";
@@ -36,9 +36,9 @@ export const addComment = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireActiveUser(ctx);
     const text = args.text.trim();
-    if (!text) throw new Error("Comment can't be empty.");
+    if (!text) throw new ConvexError("Comment can't be empty.");
     if (text.length > MAX_FEED_COMMENT_LENGTH) {
-      throw new Error("Comment is too long.");
+      throw new ConvexError("Comment is too long.");
     }
     return await ctx.db.insert("feedComments", {
       targetKey: args.targetKey,
@@ -55,7 +55,7 @@ export const deleteComment = mutation({
     const comment = await ctx.db.get(args.commentId);
     if (!comment) return;
     if (comment.userId !== userId) {
-      throw new Error("You can only delete your own comments.");
+      throw new ConvexError("You can only delete your own comments.");
     }
     await ctx.db.delete(args.commentId);
   },

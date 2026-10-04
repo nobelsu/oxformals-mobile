@@ -8,6 +8,7 @@ import { normalizeCollegeName } from "../lib/data/colleges";
 import type { CollegeReviewCategory } from "../lib/data/collegeReviews";
 import { isImageContentType } from "../lib/upload/imageFile";
 import { claimStorageOwnership, deleteStorageAndOwnership } from "./uploadOwnership";
+import { ConvexError } from "convex/values";
 
 export { normalizeCollegeName };
 
@@ -139,19 +140,19 @@ export async function validateReviewImageIds(
 
   const unique = [...new Set(imageIds)];
   if (unique.length !== imageIds.length) {
-    throw new Error("Duplicate images are not allowed.");
+    throw new ConvexError("Duplicate images are not allowed.");
   }
   if (unique.length > MAX_REVIEW_IMAGES) {
-    throw new Error(`You can attach at most ${MAX_REVIEW_IMAGES} images.`);
+    throw new ConvexError(`You can attach at most ${MAX_REVIEW_IMAGES} images.`);
   }
 
   for (const imageId of unique) {
     const metadata = await ctx.db.system.get("_storage", imageId);
     if (!metadata) {
-      throw new Error("Image not found. Try uploading again.");
+      throw new ConvexError("Image not found. Try uploading again.");
     }
     if (!isImageContentType(metadata.contentType)) {
-      throw new Error("Review images must be JPEG, PNG, WebP, or GIF.");
+      throw new ConvexError("Review images must be JPEG, PNG, WebP, or GIF.");
     }
     await claimStorageOwnership(ctx, imageId, ownerUserId);
   }

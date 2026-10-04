@@ -1,10 +1,11 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   canConfirmAttendanceCollegeListing,
   listingIsPast,
+  isGuestForCollegeListing,
 } from "../lib/data/collegeReviewEligibility";
 import { normalizeCollegeName } from "../lib/data/colleges";
 import {
@@ -87,7 +88,7 @@ export async function recordAttendanceConfirmation(
   nowMs: number,
 ): Promise<Id<"formalAttendanceConfirmations">> {
   const college = normalizeCollegeName(listing.college);
-  if (!college) throw new Error("Invalid college.");
+  if (!college) throw new ConvexError("Invalid college.");
 
   const isFirst = await isFirstConfirmationForListing(ctx, listing._id);
   const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
@@ -119,10 +120,10 @@ export const confirmAttendance = mutation({
   handler: async (ctx, args) => {
     const { userId, user } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(args.listingId);
-    if (!listing) throw new Error("Listing not found.");
+    if (!listing) throw new ConvexError("Listing not found.");
 
     if (await hasRespondedToAttendance(ctx, args.listingId, userId)) {
-      throw new Error("You already responded about this formal.");
+      throw new ConvexError("You already responded about this formal.");
     }
 
     const eligibility = canConfirmAttendanceCollegeListing(
@@ -132,7 +133,7 @@ export const confirmAttendance = mutation({
       { hasRespondedToAttendance: false },
     );
     if (!eligibility.canConfirm) {
-      throw new Error(eligibility.reason ?? "You cannot confirm attendance.");
+      throw new ConvexError(eligibility.reason ?? "You cannot confirm attendance.");
     }
 
     const confirmationId = await recordAttendanceConfirmation(
@@ -142,7 +143,14 @@ export const confirmAttendance = mutation({
       args.nowMs,
     );
     await awardNewBadges(ctx, userId, args.nowMs);
-    await earnReferralOnAttendance(ctx, listing._id, userId);
+    // The invite reward is for visiting a formal, not for hosting your own or
+    // dining at home.
+    if (
+      listing.ownerUserId !== userId &&
+      isGuestForCollegeListing({ id: userId, college: user.college }, listing.college)
+    ) {
+      await earnReferralOnAttendance(ctx, listing._id, userId);
+    }
     return confirmationId;
   },
 });
@@ -159,10 +167,10 @@ export const declineAttendance = mutation({
   handler: async (ctx, args) => {
     const { userId, user } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(args.listingId);
-    if (!listing) throw new Error("Listing not found.");
+    if (!listing) throw new ConvexError("Listing not found.");
 
     if (await hasRespondedToAttendance(ctx, args.listingId, userId)) {
-      throw new Error("You already responded about this formal.");
+      throw new ConvexError("You already responded about this formal.");
     }
 
     const eligibility = canConfirmAttendanceCollegeListing(
@@ -172,12 +180,12 @@ export const declineAttendance = mutation({
       { hasRespondedToAttendance: false },
     );
     if (!eligibility.canConfirm) {
-      throw new Error(eligibility.reason ?? "You cannot update attendance.");
+      throw new ConvexError(eligibility.reason ?? "You cannot update attendance.");
     }
 
     const validated = validateDeclineReason(args.reasonPreset, args.reasonOther);
     if (!validated.ok) {
-      throw new Error(validated.error);
+      throw new ConvexError(validated.error);
     }
 
     const id = await ctx.db.insert("formalAttendanceConfirmations", {
@@ -209,17 +217,12 @@ export const getPendingAttendanceListingIds = query({
     const user = await ctx.db.get(userId);
     if (!user) return [];
 
-    const home = normalizeCollegeName(user.college ?? "");
     const listings = await ctx.db.query("listings").collect();
     const pending: Id<"listings">[] = [];
 
     for (const listing of listings) {
       if (!listing.members.includes(userId)) continue;
-      if (listing.ownerUserId === userId) continue;
       if (!listingIsPast(listing.dateTime, args.nowMs)) continue;
-
-      const host = normalizeCollegeName(listing.college);
-      if (home && host && home === host) continue;
 
       if (await hasRespondedToAttendance(ctx, listing._id, userId)) continue;
 

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   createAccount,
   getAuthSessionId,
@@ -51,10 +51,10 @@ export const setPassword = action({
   handler: async (ctx, { password }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new Error("Not authenticated");
+      throw new ConvexError("Not authenticated");
     }
     if (!password || password.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(
+      throw new ConvexError(
         `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
       );
     }
@@ -62,12 +62,12 @@ export const setPassword = action({
     const me = await ctx.runQuery(api.users.current);
     const email = me?.email?.trim();
     if (!email) {
-      throw new Error("No verified email on this account.");
+      throw new ConvexError("No verified email on this account.");
     }
 
     // Set-once: an existing password is changed with changePassword instead.
     if (await ctx.runQuery(api.password.hasPassword)) {
-      throw new Error("Password already set");
+      throw new ConvexError("Password already set");
     }
 
     await createAccount<DataModel>(ctx, {
@@ -94,7 +94,7 @@ export const setPasswordForEmail = internalAction({
   handler: async (ctx, { email, password }) => {
     const normalized = email.trim().toLowerCase();
     if (!password || password.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(
+      throw new ConvexError(
         `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
       );
     }
@@ -102,10 +102,10 @@ export const setPasswordForEmail = internalAction({
       email: normalized,
     });
     if (!state.userExists) {
-      throw new Error(`No user with email ${normalized}.`);
+      throw new ConvexError(`No user with email ${normalized}.`);
     }
     if (state.hasPassword) {
-      throw new Error("Password already set");
+      throw new ConvexError("Password already set");
     }
 
     await createAccount<DataModel>(ctx, {
@@ -180,7 +180,7 @@ export const sessionForPasswordChange = internalQuery({
 
 function assertPasswordOk(password: string) {
   if (!password || password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    throw new ConvexError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
   }
 }
 
@@ -193,8 +193,8 @@ export const changePassword = action({
   returns: v.union(v.literal("ok"), v.literal("wrong_password")),
   handler: async (ctx, { current, next }) => {
     const me = await ctx.runQuery(internal.password.sessionForPasswordChange, {});
-    if (!me) throw new Error("Not authenticated");
-    if (!me.passwordAccountId) throw new Error("No password set");
+    if (!me) throw new ConvexError("Not authenticated");
+    if (!me.passwordAccountId) throw new ConvexError("No password set");
     assertPasswordOk(next);
     try {
       const found = await retrieveAccount<DataModel>(ctx, {
@@ -225,7 +225,7 @@ export const resetPassword = action({
   returns: v.union(v.literal("ok"), v.literal("stale_session")),
   handler: async (ctx, { next }) => {
     const me = await ctx.runQuery(internal.password.sessionForPasswordChange, {});
-    if (!me?.email) throw new Error("Not authenticated");
+    if (!me?.email) throw new ConvexError("Not authenticated");
     assertPasswordOk(next);
     if (Date.now() - me.sessionStartedAt > FRESH_SESSION_MS) return "stale_session";
 
@@ -273,7 +273,7 @@ export const removePassword = action({
   returns: v.union(v.literal("ok"), v.literal("wrong_password")),
   handler: async (ctx, { current }) => {
     const me = await ctx.runQuery(internal.password.sessionForPasswordChange, {});
-    if (!me) throw new Error("Not authenticated");
+    if (!me) throw new ConvexError("Not authenticated");
     if (!me.passwordAccountId) return "ok";
     try {
       const found = await retrieveAccount<DataModel>(ctx, {

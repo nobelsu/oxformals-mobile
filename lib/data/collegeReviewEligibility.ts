@@ -41,7 +41,12 @@ export function isGuestForCollegeListing(
   return !(home && host && home === host);
 }
 
-function baseGuestEligibility(
+/**
+ * Anyone in the group can say they went once the night has passed: the host
+ * and people from the hosting college included. Only reviewing is kept to
+ * visitors (see canReviewCollegeListing).
+ */
+function baseAttendanceEligibility(
   user: ReviewEligibilityUser | null | undefined,
   listing: ReviewEligibilityListing,
   nowMs: number,
@@ -56,24 +61,10 @@ function baseGuestEligibility(
       reason: "Only group members can confirm attendance for this formal.",
     };
   }
-  if (listing.ownerUserId && listing.ownerUserId === user.id) {
-    return {
-      isPast,
-      reason: "Hosts do not need to confirm attendance.",
-    };
-  }
   if (!isPast) {
     return {
       isPast,
       reason: "You can confirm attendance after the formal has taken place.",
-    };
-  }
-  const home = normalizeCollegeName(user.college ?? "");
-  const host = normalizeCollegeName(listing.college);
-  if (home && host && home === host) {
-    return {
-      isPast,
-      reason: "You cannot confirm attendance for your own college's formal.",
     };
   }
   return { ok: true, isPast };
@@ -85,7 +76,7 @@ export function canConfirmAttendanceCollegeListing(
   nowMs: number,
   options?: { hasRespondedToAttendance?: boolean },
 ): ConfirmAttendanceResult {
-  const base = baseGuestEligibility(user, listing, nowMs);
+  const base = baseAttendanceEligibility(user, listing, nowMs);
   if (!("ok" in base)) {
     return { canConfirm: false, isPast: base.isPast, reason: base.reason };
   }

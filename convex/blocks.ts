@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -63,7 +63,7 @@ export const block = mutation({
   returns: v.null(),
   handler: async (ctx, { userId }) => {
     const { userId: me } = await requireActiveUser(ctx);
-    if (me === userId) throw new Error("You can't block yourself.");
+    if (me === userId) throw new ConvexError("You can't block yourself.");
     const existing = await ctx.db
       .query("blocks")
       .withIndex("by_blockerId_and_blockedId", (q) =>

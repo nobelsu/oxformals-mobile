@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -160,7 +160,7 @@ export const deleteMyAccount = mutation({
       !user.email ||
       normalizeEmail(confirmEmail) !== normalizeEmail(user.email)
     ) {
-      throw new Error("That email doesn't match your account.");
+      throw new ConvexError("That email doesn't match your account.");
     }
 
     const notices: Notice[] = [];
@@ -406,6 +406,18 @@ export const purgeUserContent = internalMutation({
     );
     await deleteAll(
       ctx.db
+        .query("reports")
+        .withIndex("by_reportedUserId", (q) => q.eq("reportedUserId", userId)),
+    );
+    await deleteAll(
+      ctx.db
+        .query("reports")
+        .withIndex("by_reporterUserId_and_targetKey", (q) =>
+          q.eq("reporterUserId", userId),
+        ),
+    );
+    await deleteAll(
+      ctx.db
         .query("collegeTips")
         .withIndex("by_userId", (q) => q.eq("userId", userId)),
     );
@@ -509,6 +521,7 @@ export const purgeUserContent = internalMutation({
 type TableWithRows =
   | "feedComments"
   | "bioReports"
+  | "reports"
   | "collegeTips"
   | "collegeReviewReports"
   | "partyInvites"

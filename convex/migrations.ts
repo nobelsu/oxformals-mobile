@@ -184,10 +184,10 @@ const ATTENDANCE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
  * a formal someone was a guest at left no record, so it doesn't show on their
  * profile or count towards badges.
  *
- * For every formal that ended more than a week ago, each guest who could have
- * confirmed (the same rule as the app: in the group, not the host, not from
- * that college) and never answered gets an attendance record dated the night
- * of the formal. Anyone who said they didn't go is left as they are. No
+ * For every formal that ended more than a week ago, everyone in the group who
+ * never answered gets an attendance record dated the night of the formal: the
+ * host and people from that college too, except a host whose listing nobody
+ * joined. Anyone who said they didn't go is left as they are. No
  * credits or referral rewards are paid. Re-running adds nothing new. When the
  * last page is done it re-runs backfillUserBadges, which dates the badges
  * historically so nobody gets a pile of celebration popups.
@@ -225,6 +225,8 @@ export const backfillAttendanceFromPastFormals = internalMutation({
           now,
         );
         if (!eligible.canConfirm) continue;
+        // A listing nobody joined is no evidence the host went.
+        if (memberId === listing.ownerUserId && listing.members.length < 2) continue;
         if (await hasRespondedToAttendance(ctx, listing._id, memberId)) continue;
         await recordAttendanceConfirmation(ctx, listing, memberId, night);
         recorded += 1;

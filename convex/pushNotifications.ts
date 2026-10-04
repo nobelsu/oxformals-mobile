@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
@@ -73,7 +73,7 @@ function otherParticipantId(
   viewerId: Id<"users">,
 ): Id<"users"> {
   if (!convo.participantLow || !convo.participantHigh) {
-    throw new Error("Invalid DM conversation");
+    throw new ConvexError("Invalid DM conversation");
   }
   return convo.participantLow === viewerId
     ? convo.participantHigh
@@ -180,7 +180,7 @@ export const registerPushToken = mutation({
         return true;
       }
       if (existing.userId !== userId) {
-        throw new Error(
+        throw new ConvexError(
           "That push token is already linked to another account. Remove it there first.",
         );
       }

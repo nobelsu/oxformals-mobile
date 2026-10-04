@@ -72,8 +72,13 @@ export function ReviewFormalSection({ listingId, college }: Props) {
     [draft],
   );
 
+  // Your own college: you can say you went, but only visitors rate it.
   if (isAuthenticated && user && !isGuestForCollegeListing(user, college)) {
-    return null;
+    if (!state || state.existingReview) return null;
+    if (!state.isPast || !state.canConfirmAttendance || state.hasRespondedToAttendance) {
+      return null;
+    }
+    return <ConfirmAttendanceSection listingId={listingId} college={college} />;
   }
 
   if (!isAuthenticated) {

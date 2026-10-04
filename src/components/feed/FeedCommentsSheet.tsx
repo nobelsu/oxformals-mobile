@@ -2,6 +2,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MAX_FEED_COMMENT_LENGTH } from "@/lib/data/feedConstants";
 import type { FeedItem } from "@/src/components/feed/types";
+import { ReportSheet } from "@/src/components/report/ReportSheet";
 import { Avatar } from "@/src/components/ui/Avatar";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
@@ -32,6 +33,7 @@ export function FeedCommentsSheet({ item, onClose }: Props) {
   const deleteComment = useMutation(api.feedComments.deleteComment);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [reporting, setReporting] = useState<Id<"feedComments"> | null>(null);
 
   async function send() {
     const body = text.trim();
@@ -102,11 +104,25 @@ export function FeedCommentsSheet({ item, onClose }: Props) {
                 >
                   <Ionicons name="trash-outline" size={17} color={colors.inkSoft} />
                 </Pressable>
-              ) : null}
+              ) : (
+                <Pressable
+                  onPress={() => setReporting(c.id)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Report this comment"
+                >
+                  <Ionicons name="flag-outline" size={17} color={colors.inkSoft} />
+                </Pressable>
+              )}
             </View>
           ))}
         </View>
       )}
+      <ReportSheet
+        target={reporting ? { kind: "comment", commentId: reporting } : null}
+        subject="this comment"
+        onClose={() => setReporting(null)}
+      />
       <View style={styles.composer}>
         <OxInput
           value={text}

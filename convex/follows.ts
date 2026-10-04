@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { blockedEitherWay } from "./blocks";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -161,11 +161,11 @@ export const follow = mutation({
   returns: v.union(v.literal("pending"), v.literal("active")),
   handler: async (ctx, { userId }) => {
     const { userId: me } = await requireActiveUser(ctx);
-    if (me === userId) throw new Error("You can't follow yourself.");
+    if (me === userId) throw new ConvexError("You can't follow yourself.");
     const target = await ctx.db.get(userId);
-    if (!target || target.deletedAt) throw new Error("That account doesn't exist.");
+    if (!target || target.deletedAt) throw new ConvexError("That account doesn't exist.");
     if (await blockedEitherWay(ctx, me, userId)) {
-      throw new Error("You can't follow this account.");
+      throw new ConvexError("You can't follow this account.");
     }
     const existing = await followRow(ctx, me, userId);
     if (existing) return existing.status;
@@ -213,7 +213,7 @@ export const approveFollower = mutation({
   handler: async (ctx, { userId }) => {
     const { userId: me } = await requireActiveUser(ctx);
     const existing = await followRow(ctx, userId, me);
-    if (!existing) throw new Error("That request was withdrawn.");
+    if (!existing) throw new ConvexError("That request was withdrawn.");
     if (existing.status === "pending") {
       await ctx.db.patch(existing._id, { status: "active" });
       if (await isActiveFollower(ctx, me, userId)) {

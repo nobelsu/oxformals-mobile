@@ -1,4 +1,4 @@
-import { v, type Infer } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { getAuthSessionId, getAuthUserId, invalidateSessions } from "@convex-dev/auth/server";
 import { action, query } from "./_generated/server";
 import type { DataModel } from "./_generated/dataModel";
@@ -45,7 +45,7 @@ export const signOutOtherDevices = action({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     const sessionId = await getAuthSessionId(ctx);
-    if (!userId || !sessionId) throw new Error("Not authenticated");
+    if (!userId || !sessionId) throw new ConvexError("Not authenticated");
     await invalidateSessions<DataModel>(ctx, { userId, except: [sessionId] });
     return null;
   },
@@ -77,7 +77,7 @@ export const exportMyData = query({
   returns: v.any(),
   handler: async (ctx, args) => {
     const userId = await optionalUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    if (!userId) throw new ConvexError("Not authenticated");
     const n = EXPORT_ROWS;
     const db = ctx.db;
     const want = (section: Infer<typeof exportSection>) =>

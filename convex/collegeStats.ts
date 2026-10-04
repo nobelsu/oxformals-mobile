@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
@@ -45,7 +45,7 @@ export async function getOrCreateCollegeStatsDoc(
     updatedAt: nowMs,
   });
   const doc = await ctx.db.get(id);
-  if (!doc) throw new Error("Failed to create college stats.");
+  if (!doc) throw new ConvexError("Failed to create college stats.");
   return doc;
 }
 

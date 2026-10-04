@@ -2,6 +2,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { occupiedSeats } from "./seats";
 import { claimStorageOwnership, deleteStorageAndOwnership } from "./uploadOwnership";
+import { ConvexError } from "convex/values";
 
 const ALLOWED_MENU_FILE_TYPES = new Set([
   "application/pdf",
@@ -23,13 +24,13 @@ export async function validateMenuPdfId(
 ): Promise<void> {
   const metadata = await ctx.db.system.get("_storage", menuPdfId);
   if (!metadata) {
-    throw new Error("Menu file not found. Try uploading again.");
+    throw new ConvexError("Menu file not found. Try uploading again.");
   }
   if (
     !metadata.contentType ||
     !ALLOWED_MENU_FILE_TYPES.has(metadata.contentType)
   ) {
-    throw new Error("Menu file must be a PDF or image (JPEG, PNG, WebP, or GIF).");
+    throw new ConvexError("Menu file must be a PDF or image (JPEG, PNG, WebP, or GIF).");
   }
   await claimStorageOwnership(ctx, menuPdfId, ownerUserId);
 }

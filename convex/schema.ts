@@ -310,6 +310,28 @@ export default defineSchema({
       "reporterUserId",
     ])
     .index("by_reporterUserId", ["reporterUserId"]),
+  /**
+   * Reports of a person or something they posted (see convex/reports.ts).
+   * `targetKey` is "user:<id>" / "listing:<id>" / "comment:<id>" /
+   * "message:<id>"; one row per reporter per target.
+   */
+  reports: defineTable({
+    reporterUserId: v.id("users"),
+    reportedUserId: v.id("users"),
+    targetKey: v.string(),
+    reason: v.union(
+      v.literal("spam"),
+      v.literal("harassment"),
+      v.literal("inappropriate"),
+      v.literal("impersonation"),
+      v.literal("other"),
+    ),
+    details: v.optional(v.string()),
+    /** The reported text as it read when reported. */
+    snapshot: v.optional(v.string()),
+  })
+    .index("by_reporterUserId_and_targetKey", ["reporterUserId", "targetKey"])
+    .index("by_reportedUserId", ["reportedUserId"]),
   /** Per-user saved feed items, keyed by the same stable `targetKey`. */
   feedBookmarks: defineTable({
     targetKey: v.string(),

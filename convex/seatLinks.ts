@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { makeFriends } from "./follows";
@@ -29,7 +29,7 @@ export async function newSeatToken(ctx: MutationCtx): Promise<string> {
       .first();
     if (!taken) return token;
   }
-  throw new Error("Couldn't make a link. Try again.");
+  throw new ConvexError("Couldn't make a link. Try again.");
 }
 
 /** First name, and a photo only if the viewer may see it (private accounts). */
@@ -92,25 +92,25 @@ export const claimSeatLink = mutation({
       .withIndex("by_token", (q) => q.eq("token", token))
       .first();
     const req = link ? await ctx.db.get(link.requestId) : null;
-    if (!link || !req) throw new Error("This link doesn't work any more.");
-    if (req.status !== "pending") throw new Error("This request is closed.");
+    if (!link || !req) throw new ConvexError("This link doesn't work any more.");
+    if (req.status !== "pending") throw new ConvexError("This request is closed.");
     const party = req.party ?? [];
     const index = party.findIndex((p) => p.kind === "link" && p.token === token);
-    if (index === -1) throw new Error("This link has already been used.");
+    if (index === -1) throw new ConvexError("This link has already been used.");
     const seat = party[index];
     if (seat.response === "out" || (seat.expiresAt ?? 0) <= Date.now()) {
-      throw new Error("This link has expired.");
+      throw new ConvexError("This link has expired.");
     }
     if (userId === req.fromUserId) {
-      throw new Error("This is your own link. Send it to the person you're bringing.");
+      throw new ConvexError("This is your own link. Send it to the person you're bringing.");
     }
-    if (userId === req.toUserId) throw new Error("You're hosting this formal.");
+    if (userId === req.toUserId) throw new ConvexError("You're hosting this formal.");
     const listing = await ctx.db.get(req.targetListingId);
     if (
       listing?.members.includes(userId) ||
       party.some((p) => p.kind === "friend" && p.userId === userId)
     ) {
-      throw new Error("You're already in this group.");
+      throw new ConvexError("You're already in this group.");
     }
 
     const next = [...party];

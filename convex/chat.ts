@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { blockedEitherWay, blockedIdsFor } from "./blocks";
 import { OXFORD_COLLEGES } from "../lib/data/colleges";
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
@@ -241,7 +241,7 @@ async function getListingOrThrow(
   listingId: Id<"listings">,
 ): Promise<Doc<"listings">> {
   const listing = await ctx.db.get(listingId);
-  if (!listing) throw new Error("Listing not found");
+  if (!listing) throw new ConvexError("Listing not found");
   return listing;
 }
 
@@ -278,9 +278,9 @@ async function requireConversationParticipant(
   userId: Id<"users">,
 ): Promise<Doc<"conversations">> {
   const convo = await ctx.db.get(conversationId);
-  if (!convo) throw new Error("Conversation not found");
+  if (!convo) throw new ConvexError("Conversation not found");
   if (!(await isParticipant(ctx, convo, userId))) {
-    throw new Error("Not allowed to access this conversation");
+    throw new ConvexError("Not allowed to access this conversation");
   }
   return convo;
 }
@@ -290,7 +290,7 @@ function otherParticipantId(
   viewerId: Id<"users">,
 ): Id<"users"> {
   if (!convo.participantLow || !convo.participantHigh) {
-    throw new Error("Invalid DM conversation");
+    throw new ConvexError("Invalid DM conversation");
   }
   return convo.participantLow === viewerId
     ? convo.participantHigh
@@ -618,13 +618,13 @@ export const getOrCreateConversation = mutation({
   handler: async (ctx, args) => {
     const viewerId = await requireUserId(ctx);
     if (args.otherUserId === viewerId) {
-      throw new Error("You cannot message yourself");
+      throw new ConvexError("You cannot message yourself");
     }
     const otherUser = await ctx.db.get(args.otherUserId);
-    if (!otherUser) throw new Error("User not found");
+    if (!otherUser) throw new ConvexError("User not found");
     assertVerifiedEmail(otherUser);
     if (await blockedEitherWay(ctx, viewerId, args.otherUserId)) {
-      throw new Error("You can't message this person.");
+      throw new ConvexError("You can't message this person.");
     }
 
     const [participantLow, participantHigh] = orderParticipants(
@@ -662,25 +662,25 @@ export const createGroupConversation = mutation({
     const viewerId = await requireUserId(ctx);
     const uniqueIds = [...new Set(args.memberUserIds)];
     if (!uniqueIds.includes(viewerId)) {
-      throw new Error("You must include yourself in the group");
+      throw new ConvexError("You must include yourself in the group");
     }
     if (uniqueIds.length < 2) {
-      throw new Error("A group needs at least 2 members");
+      throw new ConvexError("A group needs at least 2 members");
     }
     if (uniqueIds.length > MAX_GROUP_SIZE) {
-      throw new Error(`Groups can have at most ${MAX_GROUP_SIZE} members`);
+      throw new ConvexError(`Groups can have at most ${MAX_GROUP_SIZE} members`);
     }
 
     const name = args.name?.trim();
     if (name && name.length > MAX_GROUP_NAME_LENGTH) {
-      throw new Error(
+      throw new ConvexError(
         `Group name must be at most ${MAX_GROUP_NAME_LENGTH} characters`,
       );
     }
 
     for (const id of uniqueIds) {
       const u = await ctx.db.get(id);
-      if (!u) throw new Error("User not found");
+      if (!u) throw new ConvexError("User not found");
       if (id !== viewerId) assertVerifiedEmail(u);
     }
 
@@ -707,15 +707,15 @@ export const renameGroupConversation = mutation({
     const viewerId = await requireUserId(ctx);
     const convo = await ctx.db.get(args.conversationId);
     if (!convo || conversationKind(convo) !== "group") {
-      throw new Error("Group not found");
+      throw new ConvexError("Group not found");
     }
     if (convo.createdByUserId !== viewerId) {
-      throw new Error("Only the group creator can rename the group");
+      throw new ConvexError("Only the group creator can rename the group");
     }
 
     const trimmed = args.name.trim();
     if (trimmed.length > MAX_GROUP_NAME_LENGTH) {
-      throw new Error(
+      throw new ConvexError(
         `Group name must be at most ${MAX_GROUP_NAME_LENGTH} characters`,
       );
     }
@@ -737,14 +737,14 @@ export const addGroupMember = mutation({
     const viewerId = await requireUserId(ctx);
     const convo = await ctx.db.get(args.conversationId);
     if (!convo || conversationKind(convo) !== "group") {
-      throw new Error("Group not found");
+      throw new ConvexError("Group not found");
     }
     if (convo.createdByUserId !== viewerId) {
-      throw new Error("Only the group creator can add members");
+      throw new ConvexError("Only the group creator can add members");
     }
 
     const existing = await getMemberRow(ctx, args.conversationId, args.userId);
-    if (existing) throw new Error("User is already in the group");
+    if (existing) throw new ConvexError("User is already in the group");
 
     const members = await ctx.db
       .query("conversationMembers")
@@ -753,11 +753,11 @@ export const addGroupMember = mutation({
       )
       .collect();
     if (members.length >= MAX_GROUP_SIZE) {
-      throw new Error(`Groups can have at most ${MAX_GROUP_SIZE} members`);
+      throw new ConvexError(`Groups can have at most ${MAX_GROUP_SIZE} members`);
     }
 
     const u = await ctx.db.get(args.userId);
-    if (!u) throw new Error("User not found");
+    if (!u) throw new ConvexError("User not found");
     assertVerifiedEmail(u);
 
     await ctx.db.insert("conversationMembers", {
@@ -779,17 +779,17 @@ export const removeGroupMember = mutation({
     const viewerId = await requireUserId(ctx);
     const convo = await ctx.db.get(args.conversationId);
     if (!convo || conversationKind(convo) !== "group") {
-      throw new Error("Group not found");
+      throw new ConvexError("Group not found");
     }
     if (convo.createdByUserId !== viewerId) {
-      throw new Error("Only the group creator can remove members");
+      throw new ConvexError("Only the group creator can remove members");
     }
     if (args.userId === viewerId) {
-      throw new Error("Use leave group to remove yourself");
+      throw new ConvexError("Use leave group to remove yourself");
     }
 
     const row = await getMemberRow(ctx, args.conversationId, args.userId);
-    if (!row) throw new Error("User is not in the group");
+    if (!row) throw new ConvexError("User is not in the group");
     await ctx.db.delete(row._id);
     return null;
   },
@@ -802,11 +802,11 @@ export const leaveGroupConversation = mutation({
     const viewerId = await requireUserId(ctx);
     const convo = await ctx.db.get(args.conversationId);
     if (!convo || conversationKind(convo) !== "group") {
-      throw new Error("Group not found");
+      throw new ConvexError("Group not found");
     }
 
     const myRow = await getMemberRow(ctx, args.conversationId, viewerId);
-    if (!myRow) throw new Error("You are not in this group");
+    if (!myRow) throw new ConvexError("You are not in this group");
 
     const allMembers = await ctx.db
       .query("conversationMembers")
@@ -846,13 +846,13 @@ export const getOrCreateListingGroupChat = mutation({
     const listing = await getListingOrThrow(ctx, args.listingId);
 
     if (!listing.members.includes(viewerId)) {
-      throw new Error("You are not a member of this listing");
+      throw new ConvexError("You are not a member of this listing");
     }
     if (listing.members.length < 2) {
-      throw new Error("Need at least 2 people dining together for a group chat");
+      throw new ConvexError("Need at least 2 people dining together for a group chat");
     }
     if (listing.members.length > MAX_GROUP_SIZE) {
-      throw new Error(`Groups can have at most ${MAX_GROUP_SIZE} members`);
+      throw new ConvexError(`Groups can have at most ${MAX_GROUP_SIZE} members`);
     }
 
     const existing = await ctx.db
@@ -872,7 +872,7 @@ export const getOrCreateListingGroupChat = mutation({
           )
           .collect();
         if (members.length >= MAX_GROUP_SIZE) {
-          throw new Error(`Groups can have at most ${MAX_GROUP_SIZE} members`);
+          throw new ConvexError(`Groups can have at most ${MAX_GROUP_SIZE} members`);
         }
         await ctx.db.insert("conversationMembers", {
           conversationId: existing._id,
@@ -938,7 +938,7 @@ export const listGroupMembers = query({
       userId,
     );
     if (conversationKind(convo) !== "group") {
-      throw new Error("Not a group conversation");
+      throw new ConvexError("Not a group conversation");
     }
 
     const rows = await ctx.db
@@ -1180,7 +1180,7 @@ export const clearConversation = mutation({
       userId,
     );
     if (conversationKind(convo) !== "dm") {
-      throw new Error("Only direct chats can be cleared");
+      throw new ConvexError("Only direct chats can be cleared");
     }
 
     const now = Date.now();
@@ -1433,7 +1433,7 @@ export const sendMessage = mutation({
       conversationKind(convo) !== "group" &&
       (await blockedEitherWay(ctx, userId, otherParticipantId(convo, userId)))
     ) {
-      throw new Error("You can't message this person.");
+      throw new ConvexError("You can't message this person.");
     }
 
     const clearedAt = await getClearedAt(convo, userId);
@@ -1441,35 +1441,35 @@ export const sendMessage = mutation({
     if (args.replyToMessageId) {
       const parent = await ctx.db.get(args.replyToMessageId);
       if (!parent) {
-        throw new Error("The message you are replying to no longer exists");
+        throw new ConvexError("The message you are replying to no longer exists");
       }
       if (parent.conversationId !== args.conversationId) {
-        throw new Error("Cannot reply to a message from another conversation");
+        throw new ConvexError("Cannot reply to a message from another conversation");
       }
       if (parent._creationTime <= clearedAt) {
-        throw new Error("Cannot reply to a message that is no longer visible");
+        throw new ConvexError("Cannot reply to a message that is no longer visible");
       }
     }
 
     const body = args.body.trim();
     if (!body && !args.referencedListingId) {
-      throw new Error("Message must have text or a listing reference");
+      throw new ConvexError("Message must have text or a listing reference");
     }
     if (body.length > MAX_MESSAGE_LENGTH) {
-      throw new Error(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`);
+      throw new ConvexError(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`);
     }
 
     const rawMentions = args.mentions ?? [];
     const structureResult = validateMentionStructure(body, rawMentions);
     if (!structureResult.ok) {
-      throw new Error(structureResult.error);
+      throw new ConvexError(structureResult.error);
     }
     const userResult = await validateMentionUsers(
       ctx,
       structureResult.mentions,
     );
     if (!userResult.ok) {
-      throw new Error(userResult.error);
+      throw new ConvexError(userResult.error);
     }
     const validatedMentions = userResult.mentions;
 
@@ -1483,7 +1483,7 @@ export const sendMessage = mutation({
           memberIds,
         );
         if (!referable) {
-          throw new Error("You cannot reference that listing in this conversation");
+          throw new ConvexError("You cannot reference that listing in this conversation");
         }
       } else {
         const otherUserId = otherParticipantId(convo, userId);
@@ -1494,7 +1494,7 @@ export const sendMessage = mutation({
           otherUserId,
         );
         if (!referable) {
-          throw new Error("You cannot reference that listing in this conversation");
+          throw new ConvexError("You cannot reference that listing in this conversation");
         }
       }
     }
@@ -1515,7 +1515,7 @@ export const sendMessage = mutation({
     });
 
     const message = await ctx.db.get(messageId);
-    if (!message) throw new Error("Failed to create message");
+    if (!message) throw new ConvexError("Failed to create message");
     await ctx.db.patch(args.conversationId, {
       lastMessageAt: message._creationTime,
     });

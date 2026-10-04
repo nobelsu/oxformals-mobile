@@ -620,6 +620,46 @@ export const sendBioReportEmail = internalAction({
   },
 });
 
+export const getReportDetails = internalQuery({
+  args: { reportId: v.id("reports") },
+  handler: async (ctx, { reportId }) => {
+    const report = await ctx.db.get(reportId);
+    if (!report) return null;
+    const reporter = await ctx.db.get(report.reporterUserId);
+    const reported = await ctx.db.get(report.reportedUserId);
+    return {
+      report,
+      reporterName: reporter?.name ?? "Someone",
+      reportedName: reported?.name ?? "Someone",
+    };
+  },
+});
+
+/** Tell the team about a report of a person, listing, comment or message. */
+export const sendReportEmail = internalAction({
+  args: { reportId: v.id("reports") },
+  returns: v.null(),
+  handler: async (ctx, { reportId }) => {
+    const found = await ctx.runQuery(internal.emails.getReportDetails, { reportId });
+    if (!found) return null;
+    const { report, reporterName, reportedName } = found;
+    const what = report.targetKey.split(":")[0];
+    const lines = [
+      `${reporterName} reported ${what === "user" ? reportedName : `a ${what} by ${reportedName}`} for ${report.reason}.`,
+      report.snapshot ? `"${report.snapshot}"` : null,
+      report.details ? `Their note: ${report.details}` : null,
+    ].filter(Boolean);
+    await sendEmail("sendReportEmail", "team@oxformals.com", `Report: ${what} (${report.reason})`, {
+      eyebrow: "Report",
+      heading: `A ${what === "user" ? "person" : what} was reported`,
+      body: lines.join("\n\n"),
+      cta: { href: `${siteUrl()}/profile/${report.reportedUserId}`, label: "View profile" },
+      note: `Report ${reportId} · ${report.targetKey}`,
+    });
+    return null;
+  },
+});
+
 // ── Formal changes (undone swaps, cancellations) ────────────────────────────
 
 const formalNoticeValidator = v.object({

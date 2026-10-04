@@ -4,6 +4,7 @@ import { syncListingAttendanceGuests } from "./collegeStats";
 import { refundSeatHolderCredits } from "./credits";
 import { listingIsPast } from "./listingHelpers";
 import { guestsBroughtBy, withGuestSeats } from "./seats";
+import { ConvexError } from "convex/values";
 
 /**
  * Take a guest's seat back on a listing: drop them from `members`, free the
@@ -54,13 +55,13 @@ export async function removeUserFromListingGroup(
   userId: Id<"users">,
 ): Promise<Id<"listings">> {
   const listing = await ctx.db.get(listingId);
-  if (!listing) throw new Error("Listing not found.");
+  if (!listing) throw new ConvexError("Listing not found.");
 
   if (listing.ownerUserId === userId) {
-    throw new Error("The owner cannot leave their own group.");
+    throw new ConvexError("The owner cannot leave their own group.");
   }
   if (!listing.members.includes(userId)) {
-    throw new Error("You are not a member of this group.");
+    throw new ConvexError("You are not a member of this group.");
   }
 
   await detachMember(ctx, listingId, userId);

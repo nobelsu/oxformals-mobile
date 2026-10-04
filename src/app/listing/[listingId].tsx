@@ -11,6 +11,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useNowMs } from "@/src/lib/hooks/useNowMs";
 import { useQuery } from "convex/react";
+import { ReportSheet } from "@/src/components/report/ReportSheet";
 import { ListingMembership } from "@/src/components/swap/ListingMembership";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
 import {
@@ -33,7 +34,8 @@ import { oxText } from "@/src/constants/oxText";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { OxText } from "@/src/components/ui/OxText";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ListingDetailScreen() {
@@ -68,23 +70,22 @@ export default function ListingDetailScreen() {
       : [];
   const isOwner = user && listing && listing.ownerUserId === user.id;
   const nowMs = useNowMs();
+  const [reporting, setReporting] = useState(false);
 
+  const isMember =
+    !!listing && isAuthenticated && !!user && listing.members.includes(user.id);
+  // Visitors can rate the college; anyone in the group can say they went.
   const isGuestMember =
-    !!listing &&
-    isAuthenticated &&
-    !!user &&
-    listing.members.includes(user.id) &&
-    isGuestForCollegeListing(user, listing.college);
+    isMember && !!user && !!listing && isGuestForCollegeListing(user, listing.college);
 
   const reviewState = useQuery(
     api.collegeReviews.getListingReviewState,
-    isGuestMember && listing
+    isMember && listing
       ? { listingId: listing.id as Id<"listings">, nowMs }
       : "skip",
   );
 
-  const showReviewSection =
-    isGuestMember || !!reviewState?.existingReview;
+  const showReviewSection = isMember || !!reviewState?.existingReview;
 
   const incoming = user && listing
     ? incomingRequestsForListing(requests, user.id, listing.id)
@@ -276,7 +277,26 @@ export default function ListingDetailScreen() {
             style={{ marginTop: SECTION_GAP }}
           />
         )}
+        {user && !isOwner ? (
+          <Pressable
+            onPress={() => setReporting(true)}
+            hitSlop={8}
+            style={styles.report}
+            accessibilityRole="button"
+          >
+            <OxText style={{ color: colors.inkSoft, fontSize: 14 }}>
+              Report this listing
+            </OxText>
+          </Pressable>
+        ) : null}
       </ScrollView>
+      <ReportSheet
+        target={
+          reporting ? { kind: "listing", listingId: listing.id as Id<"listings"> } : null
+        }
+        subject="this listing"
+        onClose={() => setReporting(false)}
+      />
       {modals}
     </>
   );
@@ -284,6 +304,7 @@ export default function ListingDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  report: { alignSelf: "center", marginTop: 24, minHeight: 32, justifyContent: "center" },
   gone: { alignItems: "center", justifyContent: "center", gap: 16, padding: 24 },
   content: { padding: SCREEN_PADDING, paddingBottom: 40 },
   backRow: { marginBottom: SECTION_GAP },

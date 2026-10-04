@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -83,7 +83,7 @@ export async function holdSeatCredits(
     if (balance < seats) {
       const payer = await ctx.db.get(payerId);
       const name = payer?.name?.split(" ")[0] ?? "They";
-      throw new Error(
+      throw new ConvexError(
         `${name} doesn't have enough credits for this any more (${balance} of ${seats}).`,
       );
     }
@@ -231,7 +231,7 @@ export const reportFormalDidntHappen = mutation({
     const { userId } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(listingId);
     if (listing && !listingIsPast(listing.dateTime, Date.now())) {
-      throw new Error(
+      throw new ConvexError(
         "This formal hasn't happened yet. If you can't go, leave the group and your credit comes back.",
       );
     }
@@ -243,7 +243,7 @@ export const reportFormalDidntHappen = mutation({
       (h) => h.payerId === userId && h.status === "held",
     );
     if (mine.length === 0) {
-      throw new Error("There are no credits waiting to be paid for this formal.");
+      throw new ConvexError("There are no credits waiting to be paid for this formal.");
     }
     for (const hold of mine) {
       await ctx.db.patch(hold._id, { status: "disputed" });

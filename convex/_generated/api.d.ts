@@ -64,6 +64,7 @@ import type * as profileActivity from "../profileActivity.js";
 import type * as pushNotifications from "../pushNotifications.js";
 import type * as randomCode from "../randomCode.js";
 import type * as referrals from "../referrals.js";
+import type * as reports from "../reports.js";
 import type * as retention from "../retention.js";
 import type * as roles from "../roles.js";
 import type * as seatLinks from "../seatLinks.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   pushNotifications: typeof pushNotifications;
   randomCode: typeof randomCode;
   referrals: typeof referrals;
+  reports: typeof reports;
   retention: typeof retention;
   roles: typeof roles;
   seatLinks: typeof seatLinks;

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -89,14 +89,14 @@ export const updateGuide = mutation({
     const { userId } = await requireActiveUser(ctx);
     const college = normalizeCollegeName(args.college);
     if (!(await isMemberOf(ctx, userId, college))) {
-      throw new Error("Only members of this college can edit its guide.");
+      throw new ConvexError("Only members of this college can edit its guide.");
     }
     const nights = WEEKDAYS.filter((d) => args.formalNights.includes(d));
     if (
       args.guestPrice !== undefined &&
       (!Number.isFinite(args.guestPrice) || args.guestPrice < 0 || args.guestPrice > 200)
     ) {
-      throw new Error("Enter a guest price between £0 and £200.");
+      throw new ConvexError("Enter a guest price between £0 and £200.");
     }
     const fields = {
       college,
@@ -134,7 +134,7 @@ export const addTip = action({
   ),
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    if (!userId) throw new ConvexError("Not authenticated");
     const text = args.text.replace(/\s+/g, " ").trim();
     if (!text) return { ok: false as const, reason: "empty" as const };
     if (text.length > MAX_TIP_LENGTH) return { ok: false as const, reason: "tooLong" as const };
@@ -155,7 +155,7 @@ export const insertTip = internalMutation({
   handler: async (ctx, args) => {
     const college = normalizeCollegeName(args.college);
     if (!(await isMemberOf(ctx, args.userId, college))) {
-      throw new Error("Only members of this college can add tips.");
+      throw new ConvexError("Only members of this college can add tips.");
     }
     await ctx.db.insert("collegeTips", {
       college,
@@ -174,7 +174,7 @@ export const deleteTip = mutation({
     const { userId } = await requireActiveUser(ctx);
     const tip = await ctx.db.get(tipId);
     if (!tip) return null;
-    if (tip.userId !== userId) throw new Error("You can only remove your own tips.");
+    if (tip.userId !== userId) throw new ConvexError("You can only remove your own tips.");
     await ctx.db.delete(tipId);
     return null;
   },

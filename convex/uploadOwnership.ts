@@ -1,5 +1,6 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { ConvexError } from "convex/values";
 
 export async function claimStorageOwnership(
   ctx: MutationCtx,
@@ -21,7 +22,7 @@ export async function claimStorageOwnership(
   }
 
   if (existing.ownerUserId !== ownerUserId) {
-    throw new Error("You can only attach files that you uploaded.");
+    throw new ConvexError("You can only attach files that you uploaded.");
   }
 }
 

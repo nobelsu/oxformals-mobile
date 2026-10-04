@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { creditBalance } from "./credits";
 import { optionalUserId, requireActiveUser, sanitizePublicUser } from "./guards";
@@ -18,12 +18,12 @@ export const respondToPartyInvite = mutation({
   handler: async (ctx, { requestId, response }) => {
     const { userId } = await requireActiveUser(ctx);
     const req = await ctx.db.get(requestId);
-    if (!req) throw new Error("That request was withdrawn.");
+    if (!req) throw new ConvexError("That request was withdrawn.");
     const party = req.party ?? [];
     const index = party.findIndex((p) => p.kind === "friend" && p.userId === userId);
-    if (index === -1) throw new Error("You're not in this request.");
+    if (index === -1) throw new ConvexError("You're not in this request.");
     if (req.status !== "pending") {
-      throw new Error(
+      throw new ConvexError(
         req.status === "accepted"
           ? "The host already said yes. To drop out, leave the group from the formal."
           : "This request is closed.",
@@ -33,11 +33,11 @@ export const respondToPartyInvite = mutation({
     // "Not me" gives the seat up for good; the requester has been told the
     // group is smaller. To come after all, they'd need a new request.
     if (seat.response === "out") {
-      throw new Error("You already said \"Not me\" to this request.");
+      throw new ConvexError("You already said \"Not me\" to this request.");
     }
     if (response === "in" && seat.payerId === userId && seat.method === "credit") {
       if ((await creditBalance(ctx, userId)) < 1) {
-        throw new Error(
+        throw new ConvexError(
           "You don't have a credit for this. Host a guest to earn one, or ask them to cover you.",
         );
       }

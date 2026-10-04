@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { ReportSheet } from "@/src/components/report/ReportSheet";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxText } from "@/src/components/ui/OxText";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
@@ -35,6 +36,7 @@ export function ProfileSocialBar({ userId, name }: Props) {
   const unblock = useMutation(api.blocks.unblock);
   const getOrCreateConversation = useMutation(api.chat.getOrCreateConversation);
   const [busy, setBusy] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   if (!state || !blockState || state.isSelf) return null;
 
@@ -73,19 +75,22 @@ export function ProfileSocialBar({ userId, name }: Props) {
       blockState?.iBlocked
         ? void run(() => unblock({ userId }), "Couldn't unblock them")
         : confirmBlock();
+    const reportLabel = `Report ${firstName}`;
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: [blockLabel, "Cancel"],
-          destructiveButtonIndex: blockState?.iBlocked ? undefined : 0,
-          cancelButtonIndex: 1,
+          options: [reportLabel, blockLabel, "Cancel"],
+          destructiveButtonIndex: blockState?.iBlocked ? 0 : [0, 1],
+          cancelButtonIndex: 2,
         },
         (index) => {
-          if (index === 0) onBlock();
+          if (index === 0) setReporting(true);
+          if (index === 1) onBlock();
         },
       );
     } else {
       Alert.alert(name, undefined, [
+        { text: reportLabel, onPress: () => setReporting(true) },
         { text: blockLabel, style: "destructive", onPress: onBlock },
         { text: "Cancel", style: "cancel" },
       ]);
@@ -162,6 +167,12 @@ export function ProfileSocialBar({ userId, name }: Props) {
           </Pressable>
         </View>
       )}
+
+      <ReportSheet
+        target={reporting ? { kind: "user", userId } : null}
+        subject={firstName}
+        onClose={() => setReporting(false)}
+      />
 
       {!blocked && state.isPrivate && !state.canSeeActivity ? (
         <View style={styles.private}>

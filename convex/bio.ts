@@ -1,5 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action, internalMutation, mutation } from "./_generated/server";
 import { MAX_BIO_LENGTH } from "./bioLimits";
@@ -53,7 +53,7 @@ export const saveBio = action({
   returns: saveBioResult,
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
+    if (!userId) throw new ConvexError("Not authenticated");
     const bio = normalizeBio(args.bio);
     if (bio.length > MAX_BIO_LENGTH) {
       return { ok: false as const, reason: "tooLong" as const };
@@ -73,7 +73,7 @@ export const setBio = internalMutation({
   handler: async (ctx, { userId, bio }) => {
     const user = await ctx.db.get(userId);
     if (!user || user.deletedAt !== undefined) {
-      throw new Error("User not found");
+      throw new ConvexError("User not found");
     }
     await ctx.db.patch(userId, { bio });
     return null;
@@ -109,10 +109,10 @@ export const reportBio = mutation({
   handler: async (ctx, { userId }) => {
     const { userId: reporterUserId } = await requireActiveUser(ctx);
     if (reporterUserId === userId) {
-      throw new Error("You can't report yourself.");
+      throw new ConvexError("You can't report yourself.");
     }
     const target = await ctx.db.get(userId);
-    if (!target || !target.bio) throw new Error("There's no bio to report.");
+    if (!target || !target.bio) throw new ConvexError("There's no bio to report.");
     const existing = await ctx.db
       .query("bioReports")
       .withIndex("by_reportedUserId_and_reporterUserId", (q) =>

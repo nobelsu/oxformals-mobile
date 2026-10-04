@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -261,7 +261,7 @@ export const submitReview = mutation({
   handler: async (ctx, args) => {
     const { userId, user } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(args.listingId);
-    if (!listing) throw new Error("Listing not found.");
+    if (!listing) throw new ConvexError("Listing not found.");
 
     const existing = await ctx.db
       .query("collegeReviews")
@@ -269,7 +269,7 @@ export const submitReview = mutation({
         q.eq("listingId", args.listingId).eq("userId", userId),
       )
       .unique();
-    if (existing) throw new Error("You already reviewed this formal.");
+    if (existing) throw new ConvexError("You already reviewed this formal.");
 
     const confirmed = await hasConfirmedAttendance(ctx, args.listingId, userId);
     const eligibility = getReviewEligibility(user, listing, userId, args.nowMs, {
@@ -277,12 +277,12 @@ export const submitReview = mutation({
       hasConfirmedAttendance: confirmed,
     });
     if (!eligibility.canReview) {
-      throw new Error(eligibility.reason ?? "You cannot review this formal.");
+      throw new ConvexError(eligibility.reason ?? "You cannot review this formal.");
     }
 
     const comment = args.comment?.trim();
     if (comment && comment.length > MAX_REVIEW_COMMENT_LENGTH) {
-      throw new Error(`Comment must be at most ${MAX_REVIEW_COMMENT_LENGTH} characters.`);
+      throw new ConvexError(`Comment must be at most ${MAX_REVIEW_COMMENT_LENGTH} characters.`);
     }
 
     const college = normalizeCollegeName(listing.college);
@@ -319,12 +319,12 @@ export const updateReview = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireActiveUser(ctx);
     const review = await ctx.db.get(args.reviewId);
-    if (!review) throw new Error("Review not found.");
-    if (review.userId !== userId) throw new Error("You can only edit your own review.");
+    if (!review) throw new ConvexError("Review not found.");
+    if (review.userId !== userId) throw new ConvexError("You can only edit your own review.");
 
     const comment = args.comment?.trim();
     if (comment && comment.length > MAX_REVIEW_COMMENT_LENGTH) {
-      throw new Error(`Comment must be at most ${MAX_REVIEW_COMMENT_LENGTH} characters.`);
+      throw new ConvexError(`Comment must be at most ${MAX_REVIEW_COMMENT_LENGTH} characters.`);
     }
 
     const newRatings = normalizeRatings(args.ratings);
@@ -365,9 +365,9 @@ export const voteReview = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireActiveUser(ctx);
     const review = await ctx.db.get(args.reviewId);
-    if (!review) throw new Error("Review not found.");
+    if (!review) throw new ConvexError("Review not found.");
     if (review.userId === userId) {
-      throw new Error("You cannot vote on your own review.");
+      throw new ConvexError("You cannot vote on your own review.");
     }
 
     const targetValue = args.direction === "up" ? 1 : -1;
@@ -422,9 +422,9 @@ export const reportReview = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireActiveUser(ctx);
     const review = await ctx.db.get(args.reviewId);
-    if (!review) throw new Error("Review not found.");
+    if (!review) throw new ConvexError("Review not found.");
     if (review.userId === userId) {
-      throw new Error("You cannot report your own review.");
+      throw new ConvexError("You cannot report your own review.");
     }
 
     const existing = await ctx.db

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
@@ -269,7 +269,7 @@ export const completeOnboarding = mutation({
     // Fellows have no year of study; store it empty.
     const year = roleNeedsYear(role) ? args.year.trim() : "";
     if (!name || !college || !role || (roleNeedsYear(role) && !year)) {
-      throw new Error("Missing required profile fields.");
+      throw new ConvexError("Missing required profile fields.");
     }
 
     await ctx.db.patch(userId, {
@@ -408,14 +408,14 @@ export const patchProfile = mutation({
       args.dietaryRequirements !== undefined ||
       args.dietaryConsent !== undefined;
     if (Object.keys(patch).length === 0 && !touchedDietary) {
-      throw new Error("No profile fields to update.");
+      throw new ConvexError("No profile fields to update.");
     }
 
     if (Object.keys(patch).length > 0) await ctx.db.patch(userId, patch);
 
     const updated = await ctx.db.get(userId);
     if (!updated) {
-      throw new Error("User profile not found.");
+      throw new ConvexError("User profile not found.");
     }
     return updated._id;
   },
@@ -484,10 +484,10 @@ export const toggleWishlistCollege = mutation({
     const { userId } = await requireVerifiedUser(ctx);
 
     const user = await ctx.db.get(userId);
-    if (!user) throw new Error("User profile not found.");
+    if (!user) throw new ConvexError("User profile not found.");
 
     const college = args.college.trim();
-    if (!college) throw new Error("College is required.");
+    if (!college) throw new ConvexError("College is required.");
 
     const current = user.wishlistColleges ?? [];
     const next = current.includes(college)
@@ -506,7 +506,7 @@ export const saveWishlistColleges = mutation({
     const { userId } = await requireVerifiedUser(ctx);
 
     const user = await ctx.db.get(userId);
-    if (!user) throw new Error("User profile not found.");
+    if (!user) throw new ConvexError("User profile not found.");
 
     const cleaned = Array.from(
       new Set(args.colleges.map((college) => college.trim()).filter(Boolean)),
