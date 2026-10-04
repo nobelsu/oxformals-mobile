@@ -1,12 +1,14 @@
 import {
   CollegePickerModal,
   FieldLabel,
-  InterestsEditor,
   PickerField,
   RolePickerModal,
   profileFieldStyles,
 } from "@/src/components/auth/SignupProfileForm";
+import { api } from "@/convex/_generated/api";
+import { MAX_BIO_LENGTH } from "@/convex/bioLimits";
 import { useAuth } from "@/src/components/auth/useAuth";
+import { useAction } from "convex/react";
 import { Avatar, PRESET_AVATARS, PresetAvatarIcon } from "@/src/components/ui/Avatar";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
@@ -35,6 +37,7 @@ export function ProfileEditor({
 }: Props) {
   const { user, updateProfile } = useAuth();
   const { colors } = useOxTheme();
+  const saveBio = useAction(api.bio.saveBio);
 
   const [nameDraft, setNameDraft] = useState(user?.name ?? "");
   const [collegeDraft, setCollegeDraft] = useState(user?.college ?? "");
@@ -50,9 +53,7 @@ export function ProfileEditor({
     user?.dietaryRequirements ?? "",
   );
   const [subjectDraft, setSubjectDraft] = useState(user?.subject ?? "");
-  const [interestsDraft, setInterestsDraft] = useState<string[]>(
-    user?.interests ?? [],
-  );
+  const [bioDraft, setBioDraft] = useState(user?.bio ?? "");
   const [avatarDraft, setAvatarDraft] = useState<AvatarSource | undefined>(
     user?.avatar,
   );
@@ -74,7 +75,7 @@ export function ProfileEditor({
     setWhatsappPhoneDraft(user.whatsappPhone ?? "");
     setDietaryRequirementsDraft(user.dietaryRequirements ?? "");
     setSubjectDraft(user.subject ?? "");
-    setInterestsDraft(user.interests);
+    setBioDraft(user.bio ?? "");
     setAvatarDraft(user.avatar);
     setCollegeModalOpen(false);
     setRoleModalOpen(false);
@@ -99,7 +100,7 @@ export function ProfileEditor({
   const initialWhatsappPhone = user?.whatsappPhone?.trim() ?? "";
   const initialDietaryRequirements = user?.dietaryRequirements?.trim() ?? "";
   const initialSubject = user?.subject?.trim() ?? "";
-  const initialInterests = user?.interests ?? [];
+  const initialBio = user?.bio?.trim() ?? "";
   const initialAvatar = user?.avatar;
 
   const profileDirty =
@@ -111,7 +112,7 @@ export function ProfileEditor({
     whatsappPhoneDraft.trim() !== initialWhatsappPhone ||
     dietaryRequirementsDraft.trim() !== initialDietaryRequirements ||
     subjectDraft.trim() !== initialSubject ||
-    JSON.stringify(interestsDraft) !== JSON.stringify(initialInterests) ||
+    bioDraft.trim() !== initialBio ||
     JSON.stringify(avatarDraft ?? null) !== JSON.stringify(initialAvatar ?? null);
 
   const save = useCallback(async () => {
@@ -125,9 +126,24 @@ export function ProfileEditor({
         return;
       }
       const year = yearDraft.trim();
-      if (!/^\d+$/.test(year)) {
+      // Fellows have no year.
+      if (roleDraft.trim() !== "Fellow" && !/^\d+$/.test(year)) {
         setError("Year must be a number, e.g. 2.");
         return;
+      }
+      // The bio is checked by moderation first, so it has its own save.
+      if (bioDraft.trim() !== initialBio) {
+        const result = await saveBio({ bio: bioDraft });
+        if (!result.ok) {
+          setError(
+            result.reason === "tooLong"
+              ? `Keep your bio under ${MAX_BIO_LENGTH} characters.`
+              : result.reason === "flagged"
+                ? "That bio isn't allowed. Try different wording."
+                : "Couldn't check your bio just now. Try again in a moment.",
+          );
+          return;
+        }
       }
       await updateProfile({
         name: trimmedName,
@@ -139,7 +155,6 @@ export function ProfileEditor({
         dietaryRequirements: dietaryRequirementsDraft.trim(),
         subject: subjectDraft.trim(),
         avatar: avatarDraft,
-        interests: interestsDraft,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 1200);
@@ -160,7 +175,9 @@ export function ProfileEditor({
     dietaryRequirementsDraft,
     subjectDraft,
     avatarDraft,
-    interestsDraft,
+    bioDraft,
+    initialBio,
+    saveBio,
   ]);
 
   useEffect(() => {
@@ -221,7 +238,7 @@ export function ProfileEditor({
         </Text>
         <Text style={[styles.cardSubtitle, oxText, { color: colors.inkMuted }]}>
           College, year, and role are saved with each formal you list. Avatar and
-          interests show on browse cards.
+          bio show on your profile.
         </Text>
 
         <View style={styles.avatarSection}>
@@ -376,21 +393,18 @@ export function ProfileEditor({
 
         <View style={[styles.divider, styles.interestsDivider, { borderColor: colors.inkSoft }]} />
 
+        <FieldLabel>Bio</FieldLabel>
+        <OxInput
+          value={bioDraft}
+          onChangeText={setBioDraft}
+          placeholder="A line about you"
+          maxLength={MAX_BIO_LENGTH}
+          multiline
+          seed={9}
+        />
         <Text style={[styles.interestsLead, oxText, { color: colors.inkMuted }]}>
-          Interests show up on your listings so people know what you&apos;re into.
+          {bioDraft.trim().length}/{MAX_BIO_LENGTH}
         </Text>
-
-        <View style={{ marginTop: space[3] }}>
-          <InterestsEditor
-            interests={interestsDraft}
-            onInterestsChange={setInterestsDraft}
-            boxSeed={9}
-            inputSeed={10}
-            addButtonSeed={24}
-            fill="bg"
-            showLabel={false}
-          />
-        </View>
 
         {saved ? (
           <Text style={[styles.savedHint, oxText, { color: colors.inkMuted }]}>

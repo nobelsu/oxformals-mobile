@@ -26,6 +26,7 @@ export type ProfileInfo = {
   role?: string;
   subject?: string;
   interests?: string[];
+  bio?: string;
   dietaryRequirements?: string;
   instagramHandle?: string;
   whatsappPhone?: string;
@@ -119,7 +120,14 @@ export function ProfileInfoCard({ profile }: Props) {
         </Text>
       ) : null}
 
-      {hasInterests ? (
+      {profile.bio ? (
+        <Text style={[styles.bio, oxText, { color: colors.ink }]}>
+          {profile.bio}
+        </Text>
+      ) : null}
+
+      {/* Interest tags were replaced by the bio; shown only until one is set. */}
+      {hasInterests && !profile.bio ? (
         <View style={styles.interests}>
           {interests.map((interest) => (
             <Chip key={interest} label={interest} />
@@ -185,6 +193,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: space[2],
   },
+  bio: { fontSize: 16, lineHeight: 21, textAlign: "center", marginTop: 10 },
   interests: {
     flexDirection: "row",
     flexWrap: "wrap",

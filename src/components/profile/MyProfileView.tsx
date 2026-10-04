@@ -28,6 +28,7 @@ export function MyProfileView({ onEditPress, onSettingsPress }: Props) {
           role: user.role,
           subject: user.subject,
           interests: user.interests,
+          bio: user.bio,
           dietaryRequirements: user.dietaryRequirements,
           instagramHandle: user.instagramHandle,
           whatsappPhone: user.whatsappPhone,

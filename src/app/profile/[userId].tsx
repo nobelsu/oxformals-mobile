@@ -1,18 +1,17 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { CollegeReviewCard } from "@/src/components/reviews/CollegeReviewCard";
 import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
+import { ProfileSocialBar } from "@/src/components/profile/ProfileSocialBar";
 import { ListingCard } from "@/src/components/swap/ListingCard";
 import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
-import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { DISPLAY_SECTION, SCREEN_PADDING } from "@/src/constants/layout";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useData } from "@/src/components/data/useData";
-import { chatConversationHref } from "@/src/lib/chat/navigation";
 import { oxText } from "@/src/constants/oxText";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
@@ -23,7 +22,6 @@ export default function ProfileScreen() {
   const { colors } = useOxTheme();
   const { user: currentUser } = useAuth();
   const { getUser } = useData();
-  const getOrCreateConversation = useMutation(api.chat.getOrCreateConversation);
 
   const isOwnProfile = !!(currentUser && userId === currentUser.id);
 
@@ -101,6 +99,7 @@ export default function ProfileScreen() {
             role: profile.user.role,
             subject: profile.user.subject,
             interests: profile.user.interests,
+            bio: profile.user.bio,
             dietaryRequirements: profile.user.dietaryRequirements,
             instagramHandle: profile.user.instagramHandle,
             whatsappPhone: profile.user.whatsappPhone,
@@ -108,16 +107,7 @@ export default function ProfileScreen() {
           }}
         />
 
-        <OxButton
-          title="Message"
-          onPress={async () => {
-            const id = await getOrCreateConversation({
-              otherUserId: userId as Id<"users">,
-            });
-            router.push(chatConversationHref(id));
-          }}
-          style={{ marginTop: 20, marginBottom: 8 }}
-        />
+        <ProfileSocialBar userId={uid} name={profile.user.name ?? "User"} />
 
         <DoodleDivider seed={31} />
         <Text style={[styles.heading, oxText, { color: colors.ink }]}>
