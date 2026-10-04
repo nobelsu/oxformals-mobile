@@ -17,7 +17,9 @@ import {
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { useQuery } from "convex/react";
 import { useCallback, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const SCOPES: { id: FeedScope; label: string }[] = [
@@ -28,6 +30,8 @@ const SCOPES: { id: FeedScope; label: string }[] = [
 export function FeedTab() {
   const { colors } = useOxTheme();
   const { user } = useAuth();
+  const router = useRouter();
+  const bell = useQuery(api.notifications.getBellState, user ? {} : "skip");
   const [scope, setScope] = useState<FeedScope>("forYou");
   const feed = useQuery(api.feed.getCampusFeed, user ? { scope } : "skip");
   // Keyed by item so the sheet follows live like and comment counts.
@@ -57,12 +61,37 @@ export function FeedTab() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <OxText
-              style={[styles.wordmark, { color: colors.ink }]}
-              accessibilityRole="header"
-            >
-              oxformals
-            </OxText>
+            <View style={styles.top}>
+              <OxText
+                style={[styles.wordmark, { color: colors.ink }]}
+                accessibilityRole="header"
+              >
+                oxformals
+              </OxText>
+              <Pressable
+                onPress={() => router.push("/search")}
+                hitSlop={8}
+                style={styles.icon}
+                accessibilityRole="button"
+                accessibilityLabel="Find people"
+              >
+                <Ionicons name="search-outline" size={24} color={colors.ink} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/notifications")}
+                hitSlop={8}
+                style={styles.icon}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  bell?.unread ? `Notifications, ${bell.unread} new` : "Notifications"
+                }
+              >
+                <Ionicons name="notifications-outline" size={24} color={colors.ink} />
+                {bell?.unread ? (
+                  <View style={[styles.badge, { backgroundColor: colors.danger }]} />
+                ) : null}
+              </Pressable>
+            </View>
             <PartyInvites />
             <YourFormalsCard />
             <View style={styles.scopes}>
@@ -105,7 +134,10 @@ const styles = StyleSheet.create({
     paddingBottom: TAB_SCROLL_EXTRA_BOTTOM + 32,
   },
   header: { gap: 14, paddingBottom: 14, paddingTop: 4 },
-  wordmark: { fontSize: 32, lineHeight: 38 },
+  top: { flexDirection: "row", alignItems: "center", gap: 6 },
+  wordmark: { fontSize: 32, lineHeight: 38, flex: 1 },
+  icon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  badge: { position: "absolute", top: 7, right: 8, width: 9, height: 9, borderRadius: 5 },
   scopes: { flexDirection: "row", gap: 8 },
   loading: { paddingVertical: 48 },
   empty: {

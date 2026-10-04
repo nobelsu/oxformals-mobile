@@ -80,6 +80,8 @@ function RootStack() {
         name="listing/[listingId]/edit"
         options={{ headerShown: true, title: "Edit listing" }}
       />
+      <Stack.Screen name="notifications" options={{ headerShown: true }} />
+      <Stack.Screen name="search" options={{ headerShown: true }} />
       <Stack.Screen
         name="your-formals"
         options={{ headerShown: true, title: "Your formals" }}
