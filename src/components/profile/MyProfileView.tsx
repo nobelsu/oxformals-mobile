@@ -1,5 +1,7 @@
 import { useAuth } from "@/src/components/auth/useAuth";
+import { BadgeRow } from "@/src/components/profile/BadgeRow";
 import { CreditsCard } from "@/src/components/profile/CreditsCard";
+import { MySocialCard } from "@/src/components/profile/MySocialCard";
 import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
@@ -51,9 +53,13 @@ export function MyProfileView({ onEditPress, onSettingsPress }: Props) {
         />
       </View>
 
+      <MySocialCard userId={user.id} name={user.name} />
+
       <View style={styles.credits}>
         <CreditsCard />
       </View>
+
+      <BadgeRow userId={user.id} />
     </>
   );
 }

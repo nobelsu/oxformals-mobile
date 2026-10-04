@@ -1,5 +1,6 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { CollegeReviewCard } from "@/src/components/reviews/CollegeReviewCard";
+import { BadgeRow } from "@/src/components/profile/BadgeRow";
 import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
 import { ProfileSocialBar } from "@/src/components/profile/ProfileSocialBar";
 import { ListingCard } from "@/src/components/swap/ListingCard";
@@ -108,6 +109,8 @@ export default function ProfileScreen() {
         />
 
         <ProfileSocialBar userId={uid} name={profile.user.name ?? "User"} />
+
+        <BadgeRow userId={uid} />
 
         <DoodleDivider seed={31} />
         <Text style={[styles.heading, oxText, { color: colors.ink }]}>

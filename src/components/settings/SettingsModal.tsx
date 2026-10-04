@@ -1,3 +1,7 @@
+import {
+  NotificationPrefsSection,
+  PrivacySection,
+} from "@/src/components/settings/SettingsSections";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { DeleteAccountSheet } from "@/src/components/settings/DeleteAccountSheet";
 import { PushPermissionPromptModal } from "@/src/components/push/PushPermissionPromptModal";
@@ -77,7 +81,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         <View style={{ marginTop: 20 }}>
           <Chip
             label={
-              pushEnabled ? "Notifications: on" : "Notifications: off"
+              pushEnabled ? "Chat alerts: on" : "Chat alerts: off"
             }
             onPress={
               pushBusy
@@ -107,6 +111,12 @@ export function SettingsModal({ visible, onClose }: Props) {
           />
         </View>
       )}
+      {user ? (
+        <>
+          <NotificationPrefsSection />
+          <PrivacySection />
+        </>
+      ) : null}
       <OxButton
         title="Sign out"
         variant="ghost"
