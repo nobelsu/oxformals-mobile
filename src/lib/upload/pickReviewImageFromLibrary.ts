@@ -1,10 +1,10 @@
 import { compressImage } from "@/src/lib/media/compressImage";
 import { openPhotoLibrary } from "@/src/lib/media/openPhotoLibrary";
+import { IMAGE_FILE_MAX_BYTES } from "@/lib/upload/imageFile";
 import {
-  IMAGE_FILE_MAX_BYTES,
   type ImageFileAsset,
   validateImageFileAsset,
-} from "@/lib/upload/imageFile";
+} from "@/src/lib/upload/imageFileMobile";
 
 export type PickReviewImageResult =
   | { ok: true; asset: ImageFileAsset }

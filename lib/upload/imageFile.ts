@@ -1,4 +1,4 @@
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "../../convex/_generated/dataModel";
 
 export const IMAGE_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -11,19 +11,12 @@ const ALLOWED_IMAGE_FILE_TYPES = new Set([
   "image/gif",
 ]);
 
-export type ImageFileAsset = {
-  uri: string;
-  name: string;
-  mimeType: string;
-  size: number;
-};
-
 export function isImageContentType(contentType: string | undefined): boolean {
   return !!contentType && ALLOWED_IMAGE_FILE_TYPES.has(contentType);
 }
 
-export function validateImageFileAsset(file: ImageFileAsset): string | null {
-  if (!ALLOWED_IMAGE_FILE_TYPES.has(file.mimeType)) {
+export function validateImageFile(file: File): string | null {
+  if (!ALLOWED_IMAGE_FILE_TYPES.has(file.type)) {
     return "Please choose an image (JPEG, PNG, WebP, or GIF).";
   }
   if (file.size > IMAGE_FILE_MAX_BYTES) {
@@ -32,24 +25,20 @@ export function validateImageFileAsset(file: ImageFileAsset): string | null {
   return null;
 }
 
-export async function uploadImageFileMobile(
-  file: ImageFileAsset,
+export async function uploadImageFile(
+  file: File,
   generateUploadUrl: () => Promise<string>,
 ): Promise<Id<"_storage">> {
-  const validationError = validateImageFileAsset(file);
-  if (validationError) throw new Error(validationError);
-
-  const uploadUrl = await generateUploadUrl();
-  const blob = await fetch(file.uri).then((r) => r.blob());
-
-  if (blob.size > IMAGE_FILE_MAX_BYTES) {
-    throw new Error("Image must be 5 MB or smaller.");
+  const validationError = validateImageFile(file);
+  if (validationError) {
+    throw new Error(validationError);
   }
 
+  const uploadUrl = await generateUploadUrl();
   const result = await fetch(uploadUrl, {
     method: "POST",
-    headers: { "Content-Type": file.mimeType },
-    body: blob,
+    headers: { "Content-Type": file.type },
+    body: file,
   });
 
   if (!result.ok) {

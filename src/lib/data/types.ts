@@ -6,7 +6,7 @@ export type ListingStatus = "active" | "confirmed" | "closed" | "expired";
 
 export type ListingType = "swap" | "pay" | "both";
 
-export type RequestType = "swap" | "pay";
+export type RequestType = "swap" | "pay" | "credit";
 
 export type Listing = {
   id: string;

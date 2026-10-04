@@ -1,35 +1,62 @@
 import { v } from "convex/values";
 import { Resend as ResendAPI } from "resend";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalQuery } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import { getReviewEligibility } from "./collegeReviewHelpers";
+import { hasConfirmedAttendance } from "./formalAttendance";
+import { emailNotificationsEnabled } from "./emailNotifications";
+import { listingIsPast } from "./listingHelpers";
+import { normalizeCollegeName } from "../lib/data/colleges";
+import {
+  EMAIL_SITE_URL,
+  renderEmail,
+  renderEmailText,
+  type EmailContent,
+} from "./emailTemplate";
+import { notificationEmail } from "./notificationCopy";
+import { loadView } from "./notifications";
 
-function resolveRequestType(req: Doc<"requests">): "swap" | "pay" {
+function resolveRequestType(req: Doc<"requests">): "swap" | "pay" | "credit" {
   return (
     req.requestType ?? (req.offeringListingId !== undefined ? "swap" : "pay")
   );
 }
 
-const APP_BASE_URL = "https://oxformals.vercel.app";
-
 function siteUrl(): string {
-  return APP_BASE_URL;
+  return EMAIL_SITE_URL;
 }
 
-function formatListingDate(iso: string): string {
-  const d = new Date(iso);
-  const day = new Intl.DateTimeFormat("en-GB", {
+const FROM = "Oxformals <team@oxformals.com>";
+
+/** Formals happen in Oxford, so emails show Oxford time. */
+const OXFORD_TIME_ZONE = "Europe/London";
+
+/** `Thu 9 Oct` */
+export function formatFormalDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: OXFORD_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
-  }).format(d);
-  let hours = d.getHours();
-  const minutes = d.getMinutes().toString().padStart(2, "0");
+  }).format(new Date(iso));
+}
+
+/** `Thu 9 Oct · 7:15pm`, or `· 7pm` on the hour. */
+export function formatFormalWhen(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: OXFORD_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  let hours = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const minutes = parts.find((p) => p.type === "minute")?.value ?? "00";
   const suffix = hours >= 12 ? "pm" : "am";
   hours = hours % 12 || 12;
-  const time =
-    minutes === "00" ? `${hours}${suffix}` : `${hours}:${minutes}${suffix}`;
-  return `${day} · ${time}`;
+  const time = minutes === "00" ? `${hours}${suffix}` : `${hours}:${minutes}${suffix}`;
+  return `${formatFormalDay(iso)} · ${time}`;
 }
 
 function formatPrice(gbp: number): string {
@@ -42,12 +69,30 @@ function truncateMessage(message: string, maxLen = 200): string {
   return `${trimmed.slice(0, maxLen - 1)}…`;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function firstNameOf(name: string | undefined, fallback: string): string {
+  return name?.trim().split(/\s+/)[0] || fallback;
+}
+
+/** Send one templated email. Logs (never throws) on failure. */
+async function sendEmail(
+  label: string,
+  to: string,
+  subject: string,
+  content: EmailContent,
+): Promise<void> {
+  const apiKey = process.env.AUTH_RESEND_KEY;
+  if (!apiKey) {
+    console.error(`${label}: AUTH_RESEND_KEY is not set`);
+    return;
+  }
+  const { error } = await new ResendAPI(apiKey).emails.send({
+    from: FROM,
+    to: [to],
+    subject,
+    html: renderEmail(content),
+    text: renderEmailText(content),
+  });
+  if (error) console.error(`${label}: Resend error`, error);
 }
 
 const newRequestEmailPayloadValidator = v.union(
@@ -56,12 +101,28 @@ const newRequestEmailPayloadValidator = v.union(
     toEmail: v.string(),
     subject: v.string(),
     requesterName: v.string(),
-    requestTypeLabel: v.string(),
-    formalLabel: v.string(),
+    seats: v.number(),
+    college: v.string(),
+    when: v.string(),
+    tag: v.string(),
+    detail: v.string(),
     message: v.string(),
     reviewUrl: v.string(),
   }),
 );
+
+export type NewRequestEmailPayload = {
+  requesterName: string;
+  /** Seats asked for, the requester's included. */
+  seats: number;
+  college: string;
+  when: string;
+  tag: string;
+  /** One line under the headline ("" for none). */
+  detail: string;
+  message: string;
+  reviewUrl: string;
+};
 
 export const getNewRequestEmailPayload = internalQuery({
   args: { requestId: v.id("requests") },
@@ -80,182 +141,70 @@ export const getNewRequestEmailPayload = internalQuery({
     }
 
     const requestType = resolveRequestType(req);
-    const requesterName = fromUser?.name?.trim() || "Someone";
-    const formalDate = formatListingDate(targetListing.dateTime);
-
-    let requestTypeLabel: string;
-    if (requestType === "pay") {
-      requestTypeLabel =
+    let tag: string;
+    let detail = "";
+    if (requestType === "credit") {
+      tag = "Credit";
+      detail = "You earn a credit when they come.";
+    } else if (requestType === "pay") {
+      tag =
         targetListing.price !== undefined
-          ? `Pay request · ${formatPrice(targetListing.price)}`
-          : "Pay request";
-    } else if (req.offeringListingId) {
-      const offering = await ctx.db.get(req.offeringListingId);
-      requestTypeLabel = offering
-        ? `Swap request · offering ${offering.college} · ${formatListingDate(offering.dateTime)}`
-        : "Swap request";
+          ? `Pay ${formatPrice(targetListing.price)}`
+          : "Pay";
     } else {
-      requestTypeLabel = "Swap request";
+      tag = "Swap";
+      const offering = req.offeringListingId
+        ? await ctx.db.get(req.offeringListingId)
+        : null;
+      if (offering) {
+        detail = `In return: ${offering.college}, ${formatFormalWhen(offering.dateTime)}.`;
+      }
     }
 
-    const formalLabel = `${targetListing.college} · ${formalDate}`;
-    const reviewUrl = `${siteUrl()}/requests/${req.targetListingId}`;
+    const extraSeats = (req.party ?? []).filter((p) => p.response !== "out").length;
 
     return {
       toEmail: toUser.email.trim().toLowerCase(),
       subject: `New request for your ${targetListing.college} formal`,
-      requesterName,
-      requestTypeLabel,
-      formalLabel,
+      requesterName: firstNameOf(fromUser?.name, "Someone"),
+      seats: extraSeats + 1,
+      college: targetListing.college,
+      when: formatFormalWhen(targetListing.dateTime),
+      tag,
+      detail,
       message: truncateMessage(req.message),
-      reviewUrl,
+      reviewUrl: `${siteUrl()}/requests/${req.targetListingId}`,
     };
   },
 });
 
-function buildNewRequestEmailHtml(payload: {
-  requesterName: string;
-  requestTypeLabel: string;
-  formalLabel: string;
-  message: string;
-  reviewUrl: string;
-}): string {
-  const messageBlock = payload.message
-    ? `<p style="margin:12px 0 0 0;font-size:15px;line-height:1.6;color:#1a140f;font-style:italic;">&ldquo;${escapeHtml(payload.message)}&rdquo;</p>`
-    : "";
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>New formal request</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f2ead8;color:#1a140f;font-family:'Schoolbell','Comic Sans MS','Chalkboard SE','Marker Felt',cursive,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f2ead8;padding:24px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#f6efe0;border:2px solid #1a140f;border-radius:20px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 24px 10px 24px;text-align:center;">
-                <div style="font-size:34px;line-height:1.05;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;">Oxformals</div>
-                <p style="margin:10px 0 0 0;font-size:15px;line-height:1.6;color:#5a4d40;">Find your next formal.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:8px 24px 0 24px;">
-                <p style="margin:0;font-size:16px;line-height:1.6;color:#1a140f;"><strong>${escapeHtml(payload.requesterName)}</strong> sent you a request for your formal.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:14px 24px 0 24px;">
-                <div style="background:#edbfba;border:2px solid #1a140f;border-radius:14px;padding:16px 14px;">
-                  <p style="margin:0;font-size:14px;line-height:1.5;color:#5a4d40;">${escapeHtml(payload.requestTypeLabel)}</p>
-                  <p style="margin:8px 0 0 0;font-size:18px;line-height:1.4;font-weight:800;color:#1a140f;">${escapeHtml(payload.formalLabel)}</p>
-                  ${messageBlock}
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 24px 0 24px;text-align:center;">
-                <a href="${escapeHtml(payload.reviewUrl)}" style="display:inline-block;background:#1a140f;color:#f6efe0;font-size:15px;font-weight:800;text-decoration:none;padding:12px 24px;border-radius:999px;border:2px solid #1a140f;">Review request</a>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 24px 0 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#9a8c7a;">You can accept or decline this request in Oxformals.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:10px 24px 0 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#5a4d40;">For inquiries or issues, contact us at <a href="mailto:team@oxformals.com" style="color:#1a140f;font-weight:700;text-decoration:underline;">team@oxformals.com</a>.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px 28px 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#1a140f;">See you at dinner,<br />The Oxformals Team</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-}
-
-function buildNewRequestEmailText(payload: {
-  requesterName: string;
-  requestTypeLabel: string;
-  formalLabel: string;
-  message: string;
-  reviewUrl: string;
-}): string {
-  const messageLine = payload.message
-    ? `\n\n"${payload.message}"`
-    : "";
-
-  return `${payload.requesterName} sent you a request for your formal.
-
-${payload.requestTypeLabel}
-${payload.formalLabel}${messageLine}
-
-Review the request: ${payload.reviewUrl}
-
-You can accept or decline this request in Oxformals.
-
-For inquiries or issues, contact us at team@oxformals.com.
-
-See you at dinner,
-The Oxformals Team`;
+export function newRequestEmail(p: NewRequestEmailPayload): EmailContent {
+  return {
+    eyebrow: "New request",
+    heading:
+      p.seats > 1
+        ? `${p.requesterName} wants ${p.seats} seats at your formal`
+        : `${p.requesterName} wants a seat at your formal`,
+    body: p.detail || undefined,
+    ticket: { college: p.college, when: p.when, tag: p.tag, quote: p.message },
+    cta: { href: p.reviewUrl, label: "Review request" },
+  };
 }
 
 export const sendNewRequestEmail = internalAction({
   args: { requestId: v.id("requests") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const payload: {
-      toEmail: string;
-      subject: string;
-      requesterName: string;
-      requestTypeLabel: string;
-      formalLabel: string;
-      message: string;
-      reviewUrl: string;
-    } | null = await ctx.runQuery(internal.emails.getNewRequestEmailPayload, {
-      requestId: args.requestId,
-    });
-
+    const payload: (NewRequestEmailPayload & { toEmail: string; subject: string }) | null =
+      await ctx.runQuery(internal.emails.getNewRequestEmailPayload, {
+        requestId: args.requestId,
+      });
     if (!payload) {
       return null;
     }
-
-    const apiKey = process.env.AUTH_RESEND_KEY;
-    if (!apiKey) {
-      console.error("sendNewRequestEmail: AUTH_RESEND_KEY is not set");
-      return null;
-    }
-
-    const resend = new ResendAPI(apiKey);
-    const { error } = await resend.emails.send({
-      from: "Oxformals <team@oxformals.com>",
-      to: [payload.toEmail],
-      subject: payload.subject,
-      html: buildNewRequestEmailHtml(payload),
-      text: buildNewRequestEmailText(payload),
-    });
-
-    if (error) {
-      console.error("sendNewRequestEmail: Resend error", error);
-    }
-
+    await sendEmail("sendNewRequestEmail", payload.toEmail, payload.subject, newRequestEmail(payload));
     return null;
   },
-});
-
-const listingAlertRecipientValidator = v.object({
-  userId: v.id("users"),
-  toEmail: v.string(),
 });
 
 const newListingAlertEmailPayloadValidator = v.union(
@@ -263,13 +212,21 @@ const newListingAlertEmailPayloadValidator = v.union(
   v.object({
     toEmail: v.string(),
     subject: v.string(),
-    posterName: v.string(),
-    listingTypeLabel: v.string(),
-    formalLabel: v.string(),
+    college: v.string(),
+    when: v.string(),
+    tag: v.string(),
     message: v.string(),
     browseUrl: v.string(),
   }),
 );
+
+export type NewListingAlertEmailPayload = {
+  college: string;
+  when: string;
+  tag: string;
+  message: string;
+  browseUrl: string;
+};
 
 function resolveListingType(
   listing: Pick<Doc<"listings">, "listingType">,
@@ -277,60 +234,17 @@ function resolveListingType(
   return listing.listingType ?? "swap";
 }
 
-function formatListingTypeLabel(listing: Doc<"listings">): string {
+function formatListingTypeTag(listing: Doc<"listings">): string {
   const listingType = resolveListingType(listing);
   if (listingType === "pay") {
-    return listing.price !== undefined
-      ? `Pay · ${formatPrice(listing.price)}`
-      : "Pay";
+    return listing.price !== undefined ? `Pay ${formatPrice(listing.price)}` : "Pay";
   }
-  if (listingType === "both") {
-    const pricePart =
-      listing.price !== undefined ? ` · ${formatPrice(listing.price)}` : "";
-    return `Swap or pay${pricePart}`;
-  }
-  return "Swap";
+  return listingType === "both" ? "Swap or pay" : "Swap";
 }
 
 function listingBrowseUrl(listingId: string): string {
   return `${siteUrl()}/?listing=${listingId}`;
 }
-
-export const getNewListingAlertRecipients = internalQuery({
-  args: { listingId: v.id("listings") },
-  returns: v.array(listingAlertRecipientValidator),
-  handler: async (ctx, args) => {
-    const listing = await ctx.db.get(args.listingId);
-    if (!listing || listing.status !== "active") {
-      return [];
-    }
-
-    const rows = await ctx.db
-      .query("collegeWishlists")
-      .withIndex("by_college", (q) => q.eq("college", listing.college))
-      .collect();
-
-    const recipients: { userId: Doc<"users">["_id"]; toEmail: string }[] = [];
-    const seen = new Set<string>();
-
-    for (const row of rows) {
-      if (row.userId === listing.ownerUserId) continue;
-      if (seen.has(row.userId)) continue;
-
-      const user = await ctx.db.get(row.userId);
-      if (!user?.email?.trim()) continue;
-      if (user.emailWishlistAlerts === false) continue;
-
-      seen.add(row.userId);
-      recipients.push({
-        userId: row.userId,
-        toEmail: user.email.trim().toLowerCase(),
-      });
-    }
-
-    return recipients;
-  },
-});
 
 export const getNewListingAlertEmailPayload = internalQuery({
   args: {
@@ -355,147 +269,33 @@ export const getNewListingAlertEmailPayload = internalQuery({
     }
 
     const user = await ctx.db.get(args.userId);
-    if (!user?.email?.trim() || user.emailWishlistAlerts === false) {
+    if (!user?.email?.trim() || !emailNotificationsEnabled(user)) {
       return null;
     }
     if (args.userId === listing.ownerUserId) {
       return null;
     }
 
-    const owner = await ctx.db.get(listing.ownerUserId);
-    const posterName = owner?.name?.trim() || "Someone";
-    const formalLabel = `${listing.college} · ${formatListingDate(listing.dateTime)}`;
-
     return {
       toEmail: user.email.trim().toLowerCase(),
-      subject: `New ${listing.college} formal on Oxformals`,
-      posterName,
-      listingTypeLabel: formatListingTypeLabel(listing),
-      formalLabel,
+      subject: `A seat just opened at ${listing.college}`,
+      college: listing.college,
+      when: formatFormalWhen(listing.dateTime),
+      tag: formatListingTypeTag(listing),
       message: truncateMessage(listing.message),
       browseUrl: listingBrowseUrl(args.listingId),
     };
   },
 });
 
-function buildNewListingAlertEmailHtml(payload: {
-  posterName: string;
-  listingTypeLabel: string;
-  formalLabel: string;
-  message: string;
-  browseUrl: string;
-}): string {
-  const messageBlock = payload.message
-    ? `<p style="margin:12px 0 0 0;font-size:15px;line-height:1.6;color:#1a140f;font-style:italic;">&ldquo;${escapeHtml(payload.message)}&rdquo;</p>`
-    : "";
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>New formal listing</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f2ead8;color:#1a140f;font-family:'Schoolbell','Comic Sans MS','Chalkboard SE','Marker Felt',cursive,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f2ead8;padding:24px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#f6efe0;border:2px solid #1a140f;border-radius:20px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 24px 10px 24px;text-align:center;">
-                <div style="font-size:34px;line-height:1.05;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;">Oxformals</div>
-                <p style="margin:10px 0 0 0;font-size:15px;line-height:1.6;color:#5a4d40;">Find your next formal.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:8px 24px 0 24px;">
-                <p style="margin:0;font-size:16px;line-height:1.6;color:#1a140f;"><strong>${escapeHtml(payload.posterName)}</strong> posted a new formal at a college on your wishlist.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:14px 24px 0 24px;">
-                <div style="background:#edbfba;border:2px solid #1a140f;border-radius:14px;padding:16px 14px;">
-                  <p style="margin:0;font-size:14px;line-height:1.5;color:#5a4d40;">${escapeHtml(payload.listingTypeLabel)}</p>
-                  <p style="margin:8px 0 0 0;font-size:18px;line-height:1.4;font-weight:800;color:#1a140f;">${escapeHtml(payload.formalLabel)}</p>
-                  ${messageBlock}
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 24px 0 24px;text-align:center;">
-                <a href="${escapeHtml(payload.browseUrl)}" style="display:inline-block;background:#1a140f;color:#f6efe0;font-size:15px;font-weight:800;text-decoration:none;padding:12px 24px;border-radius:999px;border:2px solid #1a140f;">View formal</a>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 24px 0 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#9a8c7a;">You received this because ${escapeHtml(payload.formalLabel.split(" · ")[0] ?? "this college")} is on your wishlist. Turn off wishlist emails in Settings.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:10px 24px 0 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#5a4d40;">For inquiries or issues, contact us at <a href="mailto:team@oxformals.com" style="color:#1a140f;font-weight:700;text-decoration:underline;">team@oxformals.com</a>.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px 28px 24px;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#1a140f;">See you at dinner,<br />The Oxformals Team</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+export function newListingAlertEmail(p: NewListingAlertEmailPayload): EmailContent {
+  return {
+    eyebrow: "Wants to go",
+    heading: `A seat just opened at ${p.college}`,
+    ticket: { college: p.college, when: p.when, tag: p.tag, quote: p.message },
+    cta: { href: p.browseUrl, label: "View formal" },
+  };
 }
-
-function buildNewListingAlertEmailText(payload: {
-  posterName: string;
-  listingTypeLabel: string;
-  formalLabel: string;
-  message: string;
-  browseUrl: string;
-}): string {
-  const messageLine = payload.message ? `\n\n"${payload.message}"` : "";
-
-  return `${payload.posterName} posted a new formal at a college on your wishlist.
-
-${payload.listingTypeLabel}
-${payload.formalLabel}${messageLine}
-
-View the formal: ${payload.browseUrl}
-
-You received this because this college is on your wishlist. Turn off wishlist emails in Settings.
-
-For inquiries or issues, contact us at team@oxformals.com.
-
-See you at dinner,
-The Oxformals Team`;
-}
-
-export const notifyWishlistForNewListing = internalAction({
-  args: { listingId: v.id("listings") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const recipients: { userId: Doc<"users">["_id"]; toEmail: string }[] =
-      await ctx.runQuery(internal.emails.getNewListingAlertRecipients, {
-        listingId: args.listingId,
-      });
-
-    for (const recipient of recipients) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.emails.sendNewListingAlertEmail,
-        {
-          listingId: args.listingId,
-          userId: recipient.userId,
-        },
-      );
-    }
-
-    return null;
-  },
-});
 
 export const sendNewListingAlertEmail = internalAction({
   args: {
@@ -504,42 +304,604 @@ export const sendNewListingAlertEmail = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const payload: {
-      toEmail: string;
-      subject: string;
-      posterName: string;
-      listingTypeLabel: string;
-      formalLabel: string;
-      message: string;
-      browseUrl: string;
-    } | null = await ctx.runQuery(internal.emails.getNewListingAlertEmailPayload, {
-      listingId: args.listingId,
-      userId: args.userId,
-    });
-
+    const payload: (NewListingAlertEmailPayload & { toEmail: string; subject: string }) | null =
+      await ctx.runQuery(internal.emails.getNewListingAlertEmailPayload, {
+        listingId: args.listingId,
+        userId: args.userId,
+      });
     if (!payload) {
       return null;
     }
+    await sendEmail(
+      "sendNewListingAlertEmail",
+      payload.toEmail,
+      payload.subject,
+      newListingAlertEmail(payload),
+    );
+    return null;
+  },
+});
 
-    const apiKey = process.env.AUTH_RESEND_KEY;
-    if (!apiKey) {
-      console.error("sendNewListingAlertEmail: AUTH_RESEND_KEY is not set");
+function listingReviewUrl(listingId: string): string {
+  return `${siteUrl()}/requests/${listingId}`;
+}
+
+const reviewReminderRecipientValidator = v.object({
+  userId: v.id("users"),
+  toEmail: v.string(),
+});
+
+const reviewReminderEmailPayloadValidator = v.union(
+  v.null(),
+  v.object({
+    toEmail: v.string(),
+    subject: v.string(),
+    college: v.string(),
+    day: v.string(),
+    reviewUrl: v.string(),
+  }),
+);
+
+export type ReviewReminderEmailPayload = {
+  college: string;
+  day: string;
+  reviewUrl: string;
+};
+
+async function isReviewReminderEligible(
+  ctx: QueryCtx,
+  listing: Doc<"listings">,
+  userId: Id<"users">,
+  nowMs: number,
+): Promise<boolean> {
+  const user = await ctx.db.get(userId);
+  if (!user?.email?.trim() || !emailNotificationsEnabled(user)) {
+    return false;
+  }
+  if (!listing.members.includes(userId)) {
+    return false;
+  }
+
+  const home = normalizeCollegeName(user.college ?? "");
+  const host = normalizeCollegeName(listing.college);
+  if (home && host && home === host) {
+    return false;
+  }
+
+  const confirmed = await hasConfirmedAttendance(ctx, listing._id, userId);
+  const eligibility = getReviewEligibility(user, listing, userId, nowMs, {
+    hasExistingReview: false,
+    hasConfirmedAttendance: confirmed,
+  });
+  if (!eligibility.canReview) {
+    return false;
+  }
+
+  return true;
+}
+
+export const getReviewReminderRecipients = internalQuery({
+  args: { listingId: v.id("listings") },
+  returns: v.array(reviewReminderRecipientValidator),
+  handler: async (ctx, args) => {
+    const listing = await ctx.db.get(args.listingId);
+    if (!listing) {
+      return [];
+    }
+
+    const nowMs = Date.now();
+    if (!listingIsPast(listing.dateTime, nowMs)) {
+      return [];
+    }
+
+    const recipients: { userId: Id<"users">; toEmail: string }[] = [];
+    const seen = new Set<string>();
+
+    for (const memberId of listing.members) {
+      if (seen.has(memberId)) continue;
+      seen.add(memberId);
+
+      const eligible = await isReviewReminderEligible(
+        ctx,
+        listing,
+        memberId,
+        nowMs,
+      );
+      if (!eligible) continue;
+
+      const user = await ctx.db.get(memberId);
+      if (!user?.email?.trim()) continue;
+
+      const existing = await ctx.db
+        .query("collegeReviews")
+        .withIndex("by_listingId_and_userId", (q) =>
+          q.eq("listingId", listing._id).eq("userId", memberId),
+        )
+        .unique();
+      if (existing) continue;
+
+      recipients.push({
+        userId: memberId,
+        toEmail: user.email.trim().toLowerCase(),
+      });
+    }
+
+    return recipients;
+  },
+});
+
+export const getReviewReminderEmailPayload = internalQuery({
+  args: {
+    listingId: v.id("listings"),
+    userId: v.id("users"),
+  },
+  returns: reviewReminderEmailPayloadValidator,
+  handler: async (ctx, args) => {
+    const listing = await ctx.db.get(args.listingId);
+    if (!listing) {
       return null;
     }
 
-    const resend = new ResendAPI(apiKey);
-    const { error } = await resend.emails.send({
-      from: "Oxformals <team@oxformals.com>",
-      to: [payload.toEmail],
-      subject: payload.subject,
-      html: buildNewListingAlertEmailHtml(payload),
-      text: buildNewListingAlertEmailText(payload),
-    });
-
-    if (error) {
-      console.error("sendNewListingAlertEmail: Resend error", error);
+    const nowMs = Date.now();
+    const eligible = await isReviewReminderEligible(
+      ctx,
+      listing,
+      args.userId,
+      nowMs,
+    );
+    if (!eligible) {
+      return null;
     }
 
+    const existing = await ctx.db
+      .query("collegeReviews")
+      .withIndex("by_listingId_and_userId", (q) =>
+        q.eq("listingId", listing._id).eq("userId", args.userId),
+      )
+      .unique();
+    if (existing) {
+      return null;
+    }
+
+    const user = await ctx.db.get(args.userId);
+    if (!user?.email?.trim()) {
+      return null;
+    }
+
+    return {
+      toEmail: user.email.trim().toLowerCase(),
+      subject: `How was ${listing.college}?`,
+      college: listing.college,
+      day: formatFormalDay(listing.dateTime),
+      reviewUrl: listingReviewUrl(args.listingId),
+    };
+  },
+});
+
+export function reviewReminderEmail(p: ReviewReminderEmailPayload): EmailContent {
+  return {
+    eyebrow: "After dinner",
+    heading: `How was ${p.college}?`,
+    body: "Your review helps people pick their next formal.",
+    ticket: { college: p.college, when: p.day },
+    cta: { href: p.reviewUrl, label: "Rate formal" },
+  };
+}
+
+export const notifyReviewReminderForListing = internalAction({
+  args: { listingId: v.id("listings") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const recipients: { userId: Id<"users">; toEmail: string }[] =
+      await ctx.runQuery(internal.emails.getReviewReminderRecipients, {
+        listingId: args.listingId,
+      });
+
+    for (const recipient of recipients) {
+      await ctx.scheduler.runAfter(0, internal.emails.sendReviewReminderEmail, {
+        listingId: args.listingId,
+        userId: recipient.userId,
+      });
+    }
+
+    return null;
+  },
+});
+
+export const sendReviewReminderEmail = internalAction({
+  args: {
+    listingId: v.id("listings"),
+    userId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const payload: (ReviewReminderEmailPayload & { toEmail: string; subject: string }) | null =
+      await ctx.runQuery(internal.emails.getReviewReminderEmailPayload, {
+        listingId: args.listingId,
+        userId: args.userId,
+      });
+    if (!payload) {
+      return null;
+    }
+    await sendEmail(
+      "sendReviewReminderEmail",
+      payload.toEmail,
+      payload.subject,
+      reviewReminderEmail(payload),
+    );
+    return null;
+  },
+});
+
+// ── Account deletion notices ────────────────────────────────────────────────
+
+const accountDeletionNoticeValidator = v.object({
+  kind: v.union(v.literal("hostLeft"), v.literal("guestLeft")),
+  toEmail: v.string(),
+  college: v.string(),
+  dateTime: v.string(),
+});
+
+export type AccountDeletionNoticeCopy = {
+  kind: "hostLeft" | "guestLeft";
+  college: string;
+  /** e.g. "Sat 12 Oct · 7pm" */
+  when: string;
+};
+
+export function accountDeletionEmail({ kind, college, when }: AccountDeletionNoticeCopy): EmailContent {
+  const ticket = { college, when };
+  return kind === "hostLeft"
+    ? {
+        eyebrow: "Cancelled",
+        heading: "Your formal was cancelled",
+        body: "The host left Oxformals, so this formal is off.",
+        ticket,
+        cta: { href: `${siteUrl()}/?tab=browse`, label: "Find another formal" },
+      }
+    : {
+        eyebrow: "Seat free",
+        heading: "A seat is free at your formal",
+        body: "A guest left Oxformals, so their seat is open again.",
+        ticket,
+        cta: { href: `${siteUrl()}/`, label: "See your formal" },
+      };
+}
+
+export function buildAccountDeletionNoticeText(copy: AccountDeletionNoticeCopy): string {
+  return renderEmailText(accountDeletionEmail(copy));
+}
+
+export const sendAccountDeletionNotices = internalAction({
+  args: { notices: v.array(accountDeletionNoticeValidator) },
+  returns: v.null(),
+  handler: async (_ctx, { notices }) => {
+    for (const notice of notices) {
+      await sendEmail(
+        "sendAccountDeletionNotices",
+        notice.toEmail,
+        notice.kind === "hostLeft"
+          ? "Your formal was cancelled"
+          : "A seat is free at your formal",
+        accountDeletionEmail({
+          kind: notice.kind,
+          college: notice.college,
+          when: formatFormalWhen(notice.dateTime),
+        }),
+      );
+    }
+    return null;
+  },
+});
+
+// ── Bio reports ─────────────────────────────────────────────────────────────
+
+export function bioReportEmail(p: { bioText: string; reportedUserId: string }): EmailContent {
+  return {
+    eyebrow: "Report",
+    heading: "A bio was reported",
+    body: `"${p.bioText}"`,
+    cta: { href: `${siteUrl()}/profile/${p.reportedUserId}`, label: "View profile" },
+    note: `To remove it: npx convex run --prod bio:clearBio '{"userId":"${p.reportedUserId}"}'`,
+  };
+}
+
+export const sendBioReportEmail = internalAction({
+  args: { reportedUserId: v.id("users"), bioText: v.string() },
+  returns: v.null(),
+  handler: async (_ctx, { reportedUserId, bioText }) => {
+    await sendEmail(
+      "sendBioReportEmail",
+      "team@oxformals.com",
+      "A bio was reported",
+      bioReportEmail({ bioText, reportedUserId }),
+    );
+    return null;
+  },
+});
+
+// ── Formal changes (undone swaps, cancellations) ────────────────────────────
+
+const formalNoticeValidator = v.object({
+  userId: v.id("users"),
+  subject: v.string(),
+  body: v.string(),
+  cta: v.union(v.literal("formals"), v.literal("browse"), v.literal("invites")),
+  /** Small label above the headline; defaults by `cta`. */
+  eyebrow: v.optional(v.string()),
+  /** The formal to show as a ticket. */
+  listingId: v.optional(v.id("listings")),
+});
+
+export const getNoticeEmails = internalQuery({
+  args: { userIds: v.array(v.id("users")) },
+  returns: v.array(
+    v.object({ userId: v.id("users"), email: v.union(v.string(), v.null()) }),
+  ),
+  handler: async (ctx, { userIds }) => {
+    const out = [];
+    for (const userId of userIds) {
+      const user = await ctx.db.get(userId);
+      out.push({
+        userId,
+        email: user && !user.deletedAt && user.email ? user.email : null,
+      });
+    }
+    return out;
+  },
+});
+
+export const getNoticeFormals = internalQuery({
+  args: { listingIds: v.array(v.id("listings")) },
+  returns: v.array(
+    v.object({ listingId: v.id("listings"), college: v.string(), dateTime: v.string() }),
+  ),
+  handler: async (ctx, { listingIds }) => {
+    const out = [];
+    for (const listingId of new Set(listingIds)) {
+      const listing = await ctx.db.get(listingId);
+      if (listing) out.push({ listingId, college: listing.college, dateTime: listing.dateTime });
+    }
+    return out;
+  },
+});
+
+export type FormalNoticeEmailInput = {
+  subject: string;
+  body: string;
+  cta: "formals" | "browse" | "invites";
+  eyebrow?: string;
+  formal?: { college: string; when: string };
+};
+
+export function formalNoticeEmail(n: FormalNoticeEmailInput): EmailContent {
+  const home = `${siteUrl()}/`;
+  const buttons: Pick<EmailContent, "cta" | "secondary"> =
+    n.cta === "invites"
+      ? { cta: { href: home, label: "I'm in" }, secondary: { href: home, label: "Not me" } }
+      : n.cta === "browse"
+        ? { cta: { href: `${siteUrl()}/?tab=browse`, label: "Find another formal" } }
+        : { cta: { href: `${siteUrl()}/`, label: "See your formals" } };
+  return {
+    eyebrow:
+      n.eyebrow ?? (n.cta === "invites" ? "Group invite" : n.cta === "browse" ? "Change of plans" : "Your formal"),
+    heading: n.subject,
+    body: n.body,
+    ticket: n.formal,
+    ...buttons,
+  };
+}
+
+/** Transactional: sent whatever the user's notification setting. */
+export const sendFormalNotices = internalAction({
+  args: { notices: v.array(formalNoticeValidator) },
+  returns: v.null(),
+  handler: async (ctx, { notices }) => {
+    const emails: Array<{ userId: Id<"users">; email: string | null }> =
+      await ctx.runQuery(internal.emails.getNoticeEmails, {
+        userIds: notices.map((n) => n.userId),
+      });
+    const byId = new Map(emails.map((e) => [e.userId, e.email]));
+    const listingIds = notices.flatMap((n) => (n.listingId ? [n.listingId] : []));
+    const formals: Array<{ listingId: Id<"listings">; college: string; dateTime: string }> =
+      listingIds.length > 0
+        ? await ctx.runQuery(internal.emails.getNoticeFormals, { listingIds })
+        : [];
+    const formalById = new Map(formals.map((f) => [f.listingId, f]));
+    for (const notice of notices) {
+      const to = byId.get(notice.userId);
+      if (!to) continue;
+      const formal = notice.listingId ? formalById.get(notice.listingId) : undefined;
+      await sendEmail(
+        "sendFormalNotices",
+        to,
+        notice.subject,
+        formalNoticeEmail({
+          ...notice,
+          formal: formal
+            ? { college: formal.college, when: formatFormalWhen(formal.dateTime) }
+            : undefined,
+        }),
+      );
+    }
+    return null;
+  },
+});
+
+export const getSwapBreakNames = internalQuery({
+  args: { brokenByUserId: v.id("users"), wrongedUserId: v.id("users") },
+  returns: v.object({ brokenBy: v.string(), wronged: v.string() }),
+  handler: async (ctx, args) => {
+    const a = await ctx.db.get(args.brokenByUserId);
+    const b = await ctx.db.get(args.wrongedUserId);
+    return {
+      brokenBy: `${a?.name ?? "Unknown"} <${a?.email ?? "?"}>`,
+      wronged: `${b?.name ?? "Unknown"} <${b?.email ?? "?"}>`,
+    };
+  },
+});
+
+export const sendSwapBreakReport = internalAction({
+  args: {
+    requestId: v.id("requests"),
+    brokenByUserId: v.id("users"),
+    wrongedUserId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const names: { brokenBy: string; wronged: string } = await ctx.runQuery(
+      internal.emails.getSwapBreakNames,
+      {
+        brokenByUserId: args.brokenByUserId,
+        wrongedUserId: args.wrongedUserId,
+      },
+    );
+    await sendEmail(
+      "sendSwapBreakReport",
+      "team@oxformals.com",
+      "A swap was broken",
+      swapBreakEmail({ ...names, requestId: args.requestId, brokenByUserId: args.brokenByUserId }),
+    );
+    return null;
+  },
+});
+
+export function swapBreakEmail(p: {
+  brokenBy: string;
+  wronged: string;
+  requestId: string;
+  brokenByUserId: string;
+}): EmailContent {
+  return {
+    eyebrow: "Report",
+    heading: "A swap was broken",
+    body: `${p.brokenBy} broke a swap with ${p.wronged} after already going to ${p.wronged.split(" <")[0]}'s formal. Their seat couldn't be taken back.`,
+    cta: { href: `${siteUrl()}/profile/${p.brokenByUserId}`, label: "View profile" },
+    note: `Request ${p.requestId}`,
+  };
+}
+
+// ── Credit disputes ─────────────────────────────────────────────────────────
+
+export const getCreditDisputeDetails = internalQuery({
+  args: { listingId: v.id("listings"), reporterId: v.id("users") },
+  returns: v.object({ reporter: v.string(), host: v.string(), formal: v.string() }),
+  handler: async (ctx, { listingId, reporterId }) => {
+    const listing = await ctx.db.get(listingId);
+    const reporter = await ctx.db.get(reporterId);
+    const host = listing ? await ctx.db.get(listing.ownerUserId) : null;
+    return {
+      reporter: `${reporter?.name ?? "Unknown"} <${reporter?.email ?? "?"}>`,
+      host: `${host?.name ?? "Unknown"} <${host?.email ?? "?"}>`,
+      formal: listing
+        ? `${listing.college} · ${formatFormalWhen(listing.dateTime)}`
+        : "a deleted listing",
+    };
+  },
+});
+
+export const sendCreditDisputeEmail = internalAction({
+  args: {
+    listingId: v.id("listings"),
+    reporterId: v.id("users"),
+    credits: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const d: { reporter: string; host: string; formal: string } =
+      await ctx.runQuery(internal.emails.getCreditDisputeDetails, {
+        listingId: args.listingId,
+        reporterId: args.reporterId,
+      });
+    await sendEmail(
+      "sendCreditDisputeEmail",
+      "team@oxformals.com",
+      "A formal was reported as not happening",
+      creditDisputeEmail({ ...d, credits: args.credits, listingId: args.listingId }),
+    );
+    return null;
+  },
+});
+
+export function creditDisputeEmail(p: {
+  reporter: string;
+  host: string;
+  formal: string;
+  credits: number;
+  listingId: string;
+}): EmailContent {
+  return {
+    eyebrow: "Credit dispute",
+    heading: "A formal was reported as not happening",
+    body: `${p.reporter} says ${p.formal} (hosted by ${p.host}) didn't happen, and paid ${p.credits} credit${p.credits === 1 ? "" : "s"} for it. The payout is on hold.`,
+    cta: { href: listingBrowseUrl(p.listingId), label: "View listing" },
+    note: `Settle each hold: npx convex run --prod credits:resolveDispute '{"holdId":"…","outcome":"refund"}' (or "payHost"). Listing ${p.listingId}.`,
+  };
+}
+
+// ── Bell notifications that email (see EMAIL_NOTICE_KINDS) ─────────────────
+
+const linkValidator = v.object({ label: v.string(), path: v.string() });
+
+const notificationEmailValidator = v.object({
+  to: v.string(),
+  subject: v.string(),
+  eyebrow: v.string(),
+  heading: v.string(),
+  body: v.optional(v.string()),
+  ticket: v.optional(
+    v.object({ college: v.string(), when: v.string(), tag: v.optional(v.string()) }),
+  ),
+  cta: linkValidator,
+  secondary: v.optional(linkValidator),
+});
+
+type NotificationEmail = {
+  to: string;
+  subject: string;
+  eyebrow: string;
+  heading: string;
+  body?: string;
+  ticket?: { college: string; when: string; tag?: string };
+  cta: { label: string; path: string };
+  secondary?: { label: string; path: string };
+};
+
+export const getNotificationEmail = internalQuery({
+  args: { notificationId: v.id("notifications") },
+  returns: v.union(v.null(), notificationEmailValidator),
+  handler: async (ctx, { notificationId }) => {
+    const n = await ctx.db.get(notificationId);
+    if (!n) return null;
+    const user = await ctx.db.get(n.userId);
+    if (!user || user.deletedAt !== undefined || !user.email?.trim()) return null;
+    const copy = notificationEmail(await loadView(ctx, n));
+    if (!copy) return null;
+    return { to: user.email.trim().toLowerCase(), ...copy };
+  },
+});
+
+/** Sent by `deliver` only when the recipient's email pref allows it. */
+export const sendNotificationEmail = internalAction({
+  args: { notificationId: v.id("notifications") },
+  returns: v.null(),
+  handler: async (ctx, { notificationId }) => {
+    const email: NotificationEmail | null = await ctx.runQuery(
+      internal.emails.getNotificationEmail,
+      { notificationId },
+    );
+    if (!email) return null;
+    await sendEmail("sendNotificationEmail", email.to, email.subject, {
+      title: email.subject,
+      eyebrow: email.eyebrow,
+      heading: email.heading,
+      ...(email.body ? { body: email.body } : {}),
+      ...(email.ticket ? { ticket: email.ticket } : {}),
+      cta: { href: `${siteUrl()}${email.cta.path}`, label: email.cta.label },
+      ...(email.secondary
+        ? { secondary: { href: `${siteUrl()}${email.secondary.path}`, label: email.secondary.label } }
+        : {}),
+    });
     return null;
   },
 });

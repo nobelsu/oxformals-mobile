@@ -10,8 +10,12 @@ import {
   optionalUserId,
   requireUserId,
   requireVerifiedUser,
+  sanitizeLimitedUser,
   sanitizePublicUser,
 } from "./guards";
+import { canSeeActivity, FOLLOW_LIST_LIMIT } from "./follows";
+import { visibleAvatar } from "./userVisibility";
+import { roleNeedsYear } from "./roles";
 
 const avatarValue = v.union(
   v.object({ kind: v.literal("preset"), id: v.string() }),
@@ -50,6 +54,36 @@ async function syncCollegeWishlists(
       await ctx.db.insert("collegeWishlists", { userId, college });
     }
   }
+}
+
+/**
+ * Dietary requirements can reveal health or religion, so they're only stored
+ * with an explicit opt-in to sharing them with formal matches.
+ *
+ * - `consent: true` stores the text (and when they first agreed).
+ * - `consent: false`, or clearing the text, withdraws: text and consent go.
+ * - No consent given: new text isn't stored. A legacy value saved before the
+ *   opt-in existed stays until they next change it (the editor asks then).
+ */
+function dietaryPatch(
+  user: Doc<"users">,
+  text: string,
+  consent: boolean | undefined,
+): Partial<Pick<Doc<"users">, "dietaryRequirements" | "dietaryConsentAt">> {
+  const trimmed = text.trim();
+  if (consent === false || trimmed === "") {
+    return { dietaryRequirements: "", dietaryConsentAt: undefined };
+  }
+  if (consent === true) {
+    return {
+      dietaryRequirements: trimmed,
+      dietaryConsentAt: user.dietaryConsentAt ?? Date.now(),
+    };
+  }
+  if (user.dietaryConsentAt !== undefined) {
+    return { dietaryRequirements: trimmed };
+  }
+  return {};
 }
 
 function listingIsUpcoming(listing: Doc<"listings">, nowMs: number): boolean {
@@ -120,11 +154,34 @@ export const current = query({
   },
 });
 
+/**
+ * Members the signed-in app resolves names and avatars from. Signed-in only;
+ * private accounts are left out unless it's you or someone you follow (they
+ * come back, limited, through `getPublicByIds` when a listing needs them).
+ */
 export const listPublic = query({
   args: {},
   handler: async (ctx) => {
+    const viewerId = await optionalUserId(ctx);
+    if (!viewerId) return [];
+    const following = new Set(
+      (
+        await ctx.db
+          .query("follows")
+          .withIndex("by_followerId_and_status", (q) =>
+            q.eq("followerId", viewerId).eq("status", "active"),
+          )
+          .take(FOLLOW_LIST_LIMIT)
+      ).map((f) => f.followeeId),
+    );
     const users = await ctx.db.query("users").order("desc").take(500);
-    return users.map(sanitizePublicUser);
+    return users
+      .filter(
+        (u) =>
+          u.deletedAt === undefined &&
+          (u.isPrivate !== true || u._id === viewerId || following.has(u._id)),
+      )
+      .map(sanitizePublicUser);
   },
 });
 
@@ -137,26 +194,46 @@ export const listForChatPicker = query({
     if (!viewerId) return [];
 
     const users = await ctx.db.query("users").order("desc").take(500);
-    return users
-      .filter((u) => u._id !== viewerId && hasVerifiedEmail(u))
-      .map((u) => ({
-        _id: u._id,
-        name: u.name,
-        college: u.college,
-        avatar: u.avatar,
-      }));
+    const picked = users.filter(
+      (u) =>
+        u._id !== viewerId && u.deletedAt === undefined && hasVerifiedEmail(u),
+    );
+    return await Promise.all(
+      picked.map(async (u) => {
+        const avatar = await visibleAvatar(ctx, viewerId, u);
+        return {
+          _id: u._id,
+          name: u.name,
+          college: u.college,
+          ...(avatar ? { avatar } : {}),
+        };
+      }),
+    );
   },
 });
 
-/** Fetch specific users for request rows and profiles (not limited to listPublic page). */
+/**
+ * Fetch specific users for request rows, listing hosts and members (not
+ * limited to the listPublic page). Signed-in only; a private account the
+ * viewer doesn't follow comes back limited to name, college, year and role.
+ */
 export const getPublicByIds = query({
   args: { userIds: v.array(v.id("users")) },
   handler: async (ctx, args) => {
+    const viewerId = await optionalUserId(ctx);
+    if (!viewerId) return [];
     const unique = [...new Set(args.userIds)].slice(0, 100);
     const users = await Promise.all(unique.map((id) => ctx.db.get(id)));
-    return users
-      .filter((user): user is Doc<"users"> => user !== null)
-      .map(sanitizePublicUser);
+    const out = [];
+    for (const user of users) {
+      if (!user) continue;
+      out.push(
+        (await canSeeActivity(ctx, viewerId, user))
+          ? sanitizePublicUser(user)
+          : sanitizeLimitedUser(user),
+      );
+    }
+    return out;
   },
 });
 
@@ -181,15 +258,17 @@ export const completeOnboarding = mutation({
     instagramHandle: v.optional(v.string()),
     whatsappPhone: v.optional(v.string()),
     dietaryRequirements: v.optional(v.string()),
+    dietaryConsent: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { userId } = await requireVerifiedUser(ctx);
+    const { userId, user } = await requireVerifiedUser(ctx);
 
     const name = args.name.trim();
     const college = args.college.trim();
-    const year = args.year.trim();
     const role = args.role.trim();
-    if (!name || !college || !year || !role) {
+    // Fellows have no year of study; store it empty.
+    const year = roleNeedsYear(role) ? args.year.trim() : "";
+    if (!name || !college || !role || (roleNeedsYear(role) && !year)) {
       throw new Error("Missing required profile fields.");
     }
 
@@ -201,7 +280,12 @@ export const completeOnboarding = mutation({
       interests: args.interests ?? [],
       instagramHandle: args.instagramHandle?.trim() || undefined,
       whatsappPhone: args.whatsappPhone?.trim() || undefined,
-      dietaryRequirements: args.dietaryRequirements?.trim() ?? "",
+      dietaryRequirements: "",
+      ...dietaryPatch(
+        user,
+        args.dietaryRequirements ?? "",
+        args.dietaryConsent,
+      ),
       subject: "",
       uiFont: DEFAULT_UI_FONT,
     });
@@ -210,11 +294,20 @@ export const completeOnboarding = mutation({
   },
 });
 
+/**
+ * Finishing onboarding: accepts the Terms and Privacy policy. Keeps its old
+ * name so older clients (and the mobile app) still work; records when.
+ */
 export const agreeToRules = mutation({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    await ctx.db.patch(userId, { agreedToRules: true });
+    await ctx.db.patch(userId, {
+      agreedToRules: true,
+      agreedToTermsAt: Date.now(),
+    });
+    return null;
   },
 });
 
@@ -228,13 +321,15 @@ export const patchProfile = mutation({
     instagramHandle: v.optional(v.string()),
     whatsappPhone: v.optional(v.string()),
     dietaryRequirements: v.optional(v.string()),
+    /** Opt-in to share dietary requirements with formal matches. */
+    dietaryConsent: v.optional(v.boolean()),
     subject: v.optional(v.string()),
     uiFont: v.optional(uiFontValidator),
     avatar: avatarOrClear,
-    emailWishlistAlerts: v.optional(v.boolean()),
+    emailNotifications: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { userId } = await requireVerifiedUser(ctx);
+    const { userId, user } = await requireVerifiedUser(ctx);
 
     type UserPatch = Partial<
       Pick<
@@ -247,10 +342,11 @@ export const patchProfile = mutation({
         | "instagramHandle"
         | "whatsappPhone"
         | "dietaryRequirements"
+        | "dietaryConsentAt"
         | "subject"
         | "uiFont"
         | "avatar"
-        | "emailWishlistAlerts"
+        | "emailNotifications"
       >
     >;
 
@@ -267,6 +363,8 @@ export const patchProfile = mutation({
     }
     if (args.role !== undefined) {
       patch.role = args.role.trim() || undefined;
+      // Becoming a fellow clears the year of study.
+      if (patch.role && !roleNeedsYear(patch.role)) patch.year = undefined;
     }
     if (args.interests !== undefined) {
       patch.interests = args.interests;
@@ -277,8 +375,18 @@ export const patchProfile = mutation({
     if (args.whatsappPhone !== undefined) {
       patch.whatsappPhone = args.whatsappPhone.trim() || undefined;
     }
-    if (args.dietaryRequirements !== undefined) {
-      patch.dietaryRequirements = args.dietaryRequirements.trim();
+    if (
+      args.dietaryRequirements !== undefined ||
+      args.dietaryConsent !== undefined
+    ) {
+      Object.assign(
+        patch,
+        dietaryPatch(
+          user,
+          args.dietaryRequirements ?? user.dietaryRequirements ?? "",
+          args.dietaryConsent,
+        ),
+      );
     }
     if (args.subject !== undefined) {
       patch.subject = args.subject.trim();
@@ -290,15 +398,20 @@ export const patchProfile = mutation({
       patch.avatar =
         args.avatar === null ? undefined : (args.avatar as Doc<"users">["avatar"]);
     }
-    if (args.emailWishlistAlerts !== undefined) {
-      patch.emailWishlistAlerts = args.emailWishlistAlerts;
+    if (args.emailNotifications !== undefined) {
+      patch.emailNotifications = args.emailNotifications;
     }
 
-    if (Object.keys(patch).length === 0) {
+    // Dietary text without consent is dropped rather than refused, so a
+    // patch can legitimately end up empty.
+    const touchedDietary =
+      args.dietaryRequirements !== undefined ||
+      args.dietaryConsent !== undefined;
+    if (Object.keys(patch).length === 0 && !touchedDietary) {
       throw new Error("No profile fields to update.");
     }
 
-    await ctx.db.patch(userId, patch);
+    if (Object.keys(patch).length > 0) await ctx.db.patch(userId, patch);
 
     const updated = await ctx.db.get(userId);
     if (!updated) {
@@ -312,7 +425,7 @@ export const getPublicProfile = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
-    if (!user) return null;
+    if (!user || user.deletedAt !== undefined) return null;
 
     const viewerId = await optionalUserId(ctx);
     /* Trusted server time for contact privacy; client-supplied `now` would be spoofable. */
@@ -329,23 +442,32 @@ export const getPublicProfile = query({
       .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", args.userId))
       .take(200);
 
+    // A private account shows only who they are (name, college, year, role,
+    // initials avatar) unless the viewer is them, an approved follower, or
+    // matched with them on an upcoming formal. Follow counts and the
+    // Follow/Request button come from `follows.getFollowState`.
+    const canSee = await canSeeActivity(ctx, viewerId, user);
+    const shown =
+      canSee || revealContact
+        ? sanitizePublicUser(user)
+        : sanitizeLimitedUser(user);
+
     return {
       user: {
-        _id: user._id,
-        name: user.name,
-        college: user.college,
-        year: user.year,
-        role: user.role,
-        interests: user.interests,
+        ...shown,
         ...(revealContact
           ? {
               instagramHandle: user.instagramHandle,
               whatsappPhone: user.whatsappPhone,
+              // Dietary requirements are PII: only reveal to the profile owner or
+              // a matched counterparty (same gate as contact details).
+              dietaryRequirements: user.dietaryRequirements ?? "",
             }
           : {}),
-        subject: user.subject ?? "",
         uiFont: user.uiFont ?? DEFAULT_UI_FONT,
-        avatar: user.avatar,
+        // Colleges they want to go to — part of their activity, so private
+        // accounts only show it to followers.
+        wishlistColleges: canSee ? (user.wishlistColleges ?? []) : [],
       },
       listings: await Promise.all(
         activeListings
@@ -395,16 +517,17 @@ export const saveWishlistColleges = mutation({
   },
 });
 
-export const backfillEmailWishlistAlerts = internalMutation({
+export const backfillEmailNotifications = internalMutation({
   args: {},
+  returns: v.object({ patched: v.number(), total: v.number() }),
   handler: async (ctx) => {
     const users = await ctx.db.query("users").collect();
     let patched = 0;
     for (const user of users) {
-      if (user.emailWishlistAlerts !== true) {
-        await ctx.db.patch(user._id, { emailWishlistAlerts: true });
-        patched++;
-      }
+      if (user.emailNotifications !== undefined) continue;
+      const enabled = user.emailWishlistAlerts !== false;
+      await ctx.db.patch(user._id, { emailNotifications: enabled });
+      patched++;
     }
     return { patched, total: users.length };
   },

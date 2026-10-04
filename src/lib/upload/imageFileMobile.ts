@@ -1,0 +1,48 @@
+import type { Id } from "@/convex/_generated/dataModel";
+import { IMAGE_FILE_MAX_BYTES, isImageContentType } from "@/lib/upload/imageFile";
+
+/** A picked image on the device; `lib/upload/imageFile` is the website's `File` version. */
+export type ImageFileAsset = {
+  uri: string;
+  name: string;
+  mimeType: string;
+  size: number;
+};
+
+export function validateImageFileAsset(file: ImageFileAsset): string | null {
+  if (!isImageContentType(file.mimeType)) {
+    return "Please choose an image (JPEG, PNG, WebP, or GIF).";
+  }
+  if (file.size > IMAGE_FILE_MAX_BYTES) {
+    return "Image must be 5 MB or smaller.";
+  }
+  return null;
+}
+
+export async function uploadImageFileMobile(
+  file: ImageFileAsset,
+  generateUploadUrl: () => Promise<string>,
+): Promise<Id<"_storage">> {
+  const validationError = validateImageFileAsset(file);
+  if (validationError) throw new Error(validationError);
+
+  const uploadUrl = await generateUploadUrl();
+  const blob = await fetch(file.uri).then((r) => r.blob());
+
+  if (blob.size > IMAGE_FILE_MAX_BYTES) {
+    throw new Error("Image must be 5 MB or smaller.");
+  }
+
+  const result = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": file.mimeType },
+    body: blob,
+  });
+
+  if (!result.ok) {
+    throw new Error("Could not upload image. Try again.");
+  }
+
+  const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
+  return storageId;
+}

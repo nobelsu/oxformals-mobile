@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 
-/** Canonical UI font / theme keys (stored on `users.uiFont`). */
+/**
+ * Retired: the per-account themes these keys named. The web app no longer
+ * reads or writes `users.uiFont` (appearance is a per-device setting now), but
+ * the field and validator stay so existing documents and older clients that
+ * still send it keep validating.
+ */
 export const UI_FONT_IDS = [
   "schoolbell",
   "inter",

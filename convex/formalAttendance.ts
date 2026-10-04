@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -13,8 +12,11 @@ import {
   validateDeclineReason,
 } from "../lib/data/formalAttendance";
 import { applyAttendanceConfirmation } from "../lib/data/collegeStats";
+import { awardNewBadges } from "./badges";
 import { removeUserFromListingGroup } from "./listingMembership";
 import { getOrCreateCollegeStatsDoc } from "./collegeStats";
+import { optionalUserId, requireActiveUser } from "./guards";
+import { earnReferralOnAttendance } from "./referrals";
 
 const declinePresetValidator = v.string();
 
@@ -56,14 +58,6 @@ export async function hasDeclinedAttendance(
 ): Promise<boolean> {
   const row = await getAttendanceResponse(ctx, listingId, userId);
   return row !== null && row.attended === false;
-}
-
-async function requireUser(ctx: QueryCtx | MutationCtx) {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Not authenticated.");
-  const user = await ctx.db.get(userId);
-  if (!user) throw new Error("User not found.");
-  return { userId, user };
 }
 
 function listingEligibilityInput(listing: Doc<"listings">) {
@@ -123,7 +117,7 @@ export const confirmAttendance = mutation({
   },
   returns: v.id("formalAttendanceConfirmations"),
   handler: async (ctx, args) => {
-    const { userId, user } = await requireUser(ctx);
+    const { userId, user } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(args.listingId);
     if (!listing) throw new Error("Listing not found.");
 
@@ -141,7 +135,15 @@ export const confirmAttendance = mutation({
       throw new Error(eligibility.reason ?? "You cannot confirm attendance.");
     }
 
-    return await recordAttendanceConfirmation(ctx, listing, userId, args.nowMs);
+    const confirmationId = await recordAttendanceConfirmation(
+      ctx,
+      listing,
+      userId,
+      args.nowMs,
+    );
+    await awardNewBadges(ctx, userId, args.nowMs);
+    await earnReferralOnAttendance(ctx, listing._id, userId);
+    return confirmationId;
   },
 });
 
@@ -155,7 +157,7 @@ export const declineAttendance = mutation({
   },
   returns: v.id("formalAttendanceConfirmations"),
   handler: async (ctx, args) => {
-    const { userId, user } = await requireUser(ctx);
+    const { userId, user } = await requireActiveUser(ctx);
     const listing = await ctx.db.get(args.listingId);
     if (!listing) throw new Error("Listing not found.");
 
@@ -201,7 +203,7 @@ export const getPendingAttendanceListingIds = query({
   },
   returns: v.array(v.id("listings")),
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await optionalUserId(ctx);
     if (!userId) return [];
 
     const user = await ctx.db.get(userId);

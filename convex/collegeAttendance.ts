@@ -2,31 +2,31 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import {
-  computeAttendanceByCollege,
+  computeAttendanceByCollegeFromConfirmations,
   getAttendanceForCollege,
 } from "../lib/data/collegeAttendance";
 import { normalizeCollegeName, OXFORD_COLLEGES } from "../lib/data/colleges";
+import { rowCountsAsAttended } from "../lib/data/formalAttendance";
 
-export function buildAttendanceMap(
-  listings: Doc<"listings">[],
+export function buildAttendanceMapFromConfirmations(
+  confirmations: Doc<"formalAttendanceConfirmations">[],
+  listingsById: Map<string, Doc<"listings">>,
   nowMs: number,
 ) {
-  return computeAttendanceByCollege(
-    listings.map((l) => ({
-      college: l.college,
-      dateTime: l.dateTime,
-      ownerUserId: l.ownerUserId,
-      members: l.members.map(String),
-    })),
-    nowMs,
-  );
-}
+  const rows = confirmations
+    .map((c) => {
+      const listing = listingsById.get(c.listingId);
+      if (!listing) return null;
+      return {
+        listingId: c.listingId,
+        college: listing.college,
+        dateTime: listing.dateTime,
+        attended: rowCountsAsAttended(c) ? true : false,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
-export function attendanceForCollege(
-  map: ReturnType<typeof buildAttendanceMap>,
-  college: string,
-) {
-  return getAttendanceForCollege(map, college);
+  return computeAttendanceByCollegeFromConfirmations(rows, nowMs);
 }
 
 /** Dev-only: log computed attendance per college in Convex dashboard. */
@@ -34,13 +34,21 @@ export const auditAttendance = internalMutation({
   args: { nowMs: v.number() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const confirmations = await ctx.db
+      .query("formalAttendanceConfirmations")
+      .collect();
     const listings = await ctx.db.query("listings").collect();
-    const map = buildAttendanceMap(listings, args.nowMs);
+    const listingsById = new Map(listings.map((l) => [l._id, l]));
+    const map = buildAttendanceMapFromConfirmations(
+      confirmations,
+      listingsById,
+      args.nowMs,
+    );
     for (const college of OXFORD_COLLEGES) {
-      const stats = attendanceForCollege(map, college);
+      const stats = getAttendanceForCollege(map, college);
       if (stats.attendanceCount > 0 || stats.completedFormalCount > 0) {
         console.log(
-          `${college}: ${stats.attendanceCount} guests, ${stats.completedFormalCount} formals`,
+          `${college}: ${stats.attendanceCount} confirmed guests, ${stats.completedFormalCount} formals`,
         );
       }
     }

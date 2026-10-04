@@ -1,4 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { blockedEitherWay, blockedIdsFor } from "./blocks";
+import { OXFORD_COLLEGES } from "../lib/data/colleges";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -11,6 +13,7 @@ import {
 } from "./chatMentions";
 import { assertVerifiedEmail } from "./userVerification";
 import { requireActiveUser } from "./guards";
+import { visibleAvatar } from "./userVisibility";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -620,6 +623,9 @@ export const getOrCreateConversation = mutation({
     const otherUser = await ctx.db.get(args.otherUserId);
     if (!otherUser) throw new Error("User not found");
     assertVerifiedEmail(otherUser);
+    if (await blockedEitherWay(ctx, viewerId, args.otherUserId)) {
+      throw new Error("You can't message this person.");
+    }
 
     const [participantLow, participantHigh] = orderParticipants(
       viewerId,
@@ -947,6 +953,7 @@ export const listGroupMembers = query({
       id: Id<"users">;
       name: string;
       college?: string;
+      avatar?: Doc<"users">["avatar"];
       joinedAt: number;
     }[] = [];
 
@@ -1019,21 +1026,48 @@ export const searchUsersForChat = query({
     const q = args.query.trim().toLowerCase();
     if (q.length < 2) return [];
 
-    const users = await ctx.db.query("users").take(500);
-    return users
-      .filter((u) => u._id !== userId && (u.name?.trim() ?? "").length > 0)
-      .filter((u) => {
-        const name = u.name!.toLowerCase();
-        const college = (u.college ?? "").toLowerCase();
-        return name.includes(q) || college.includes(q);
-      })
-      .slice(0, 15)
-      .map((u) => ({
-        id: u._id,
-        name: u.name!.trim(),
-        ...(u.college?.trim() ? { college: u.college.trim() } : {}),
-        ...(u.avatar ? { avatar: u.avatar } : {}),
-      }));
+    // By name through the search index (every account, not the first 500),
+    // then by college for a query like "keb".
+    const LIMIT = 15;
+    const found = new Map<Id<"users">, Doc<"users">>();
+    for (const u of await ctx.db
+      .query("users")
+      .withSearchIndex("search_name", (sq) => sq.search("name", q))
+      .take(LIMIT * 2)) {
+      found.set(u._id, u);
+    }
+    for (const college of OXFORD_COLLEGES.filter((c) => c.toLowerCase().includes(q)).slice(0, 3)) {
+      if (found.size >= LIMIT * 2) break;
+      for (const u of await ctx.db
+        .query("users")
+        .withIndex("by_college", (iq) => iq.eq("college", college))
+        .take(LIMIT)) {
+        found.set(u._id, u);
+      }
+    }
+    const blocked = await blockedIdsFor(ctx, userId);
+    const matches = [...found.values()]
+      .filter(
+        (u) =>
+          u._id !== userId &&
+          u.deletedAt === undefined &&
+          !blocked.has(u._id) &&
+          (u.name?.trim() ?? "").length > 0,
+      )
+      .slice(0, LIMIT);
+    return await Promise.all(
+      matches.map(async (u) => {
+        // Not in a chat with them yet: a private account they can't see
+        // shows initials, not their photo.
+        const avatar = await visibleAvatar(ctx, userId, u);
+        return {
+          id: u._id,
+          name: u.name!.trim(),
+          ...(u.college?.trim() ? { college: u.college.trim() } : {}),
+          ...(avatar ? { avatar } : {}),
+        };
+      }),
+    );
   },
 });
 
@@ -1069,8 +1103,21 @@ export const searchUsersForMention = query({
       }
     }
 
+    // Anyone, not just this chat's members: a private account the viewer
+    // can't see shows initials, not their photo.
     const users = await ctx.db.query("users").take(500);
-    return searchUsersByPrefix(users, userId, args.query, 15);
+    const byId = new Map(users.map((u) => [u._id, u]));
+    return await Promise.all(
+      searchUsersByPrefix(users, userId, args.query, 15).map(async (m) => {
+        const avatar = await visibleAvatar(ctx, userId, byId.get(m.id)!);
+        return {
+          id: m.id,
+          name: m.name,
+          ...(m.college ? { college: m.college } : {}),
+          ...(avatar ? { avatar } : {}),
+        };
+      }),
+    );
   },
 });
 
@@ -1382,6 +1429,13 @@ export const sendMessage = mutation({
       userId,
     );
 
+    if (
+      conversationKind(convo) !== "group" &&
+      (await blockedEitherWay(ctx, userId, otherParticipantId(convo, userId)))
+    ) {
+      throw new Error("You can't message this person.");
+    }
+
     const clearedAt = await getClearedAt(convo, userId);
 
     if (args.replyToMessageId) {
@@ -1471,6 +1525,9 @@ export const sendMessage = mutation({
       internal.pushNotifications.sendChatMessagePush,
       { messageId },
     );
+    await ctx.scheduler.runAfter(0, internal.notificationDelivery.sendChatWebPush, {
+      messageId,
+    });
 
     return messageId;
   },

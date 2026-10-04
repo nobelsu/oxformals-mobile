@@ -1,6 +1,6 @@
 # Oxformals Mobile
 
-Expo (React Native) client for Oxformals — Oxford formal seat marketplace. Convex backend code lives in this repo under `convex/` (shared with the same deployment as web).
+Expo (React Native) client for Oxformals — Oxford formal seat marketplace. The Convex backend is shared with the website; `convex/` in this repo is a read-only mirror of the website's (see Setup).
 
 ## Setup
 
@@ -17,13 +17,13 @@ npm install
 EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
-3. When you change Convex functions or schema, regenerate types from the **mobile project root**:
+3. The backend lives in the website repo (`oxformals`) and is only ever deployed from there. `convex/` here is a mirror kept for types. After the website's backend changes, refresh it from the **mobile project root**:
 
 ```bash
-npx convex dev
+npm run sync:backend
 ```
 
-(Use `npx convex dev --once` for a single codegen/sync pass, or keep it running while you edit `convex/`.)
+Never run `npx convex dev` or `npx convex deploy` in this repo: it would replace the live functions with this copy.
 
 4. Start the mobile app:
 

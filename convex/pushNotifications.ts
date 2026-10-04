@@ -7,15 +7,12 @@ import {
   internalQuery,
   mutation,
 } from "./_generated/server";
-import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
-import {
-  formatListingDate,
-  formatListingTypeLabel,
-} from "./listingFormat";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { deliverExpoPushMessages } from "./expoPush";
 import { requireActiveUser } from "./guards";
+import { pushAllowed } from "./notificationPrefs";
 
 const PUSH_PREVIEW_MAX_LENGTH = 120;
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 /** Must match src/lib/push/chatNotificationCategory.ts */
 const CHAT_PUSH_CATEGORY_ID = "chat_reply";
@@ -53,6 +50,7 @@ const pushPayloadValidator = v.union(
   }),
 );
 
+/** A chat or "Want to go" push for the phone app (see pushMessageValidator). */
 type PushMessage = {
   to: string;
   title: string;
@@ -64,10 +62,6 @@ type PushMessage = {
   channelId?: string;
   collapseId?: string;
 };
-
-type ExpoPushTicket =
-  | { status: "ok"; id?: string }
-  | { status: "error"; message?: string; details?: { error?: string } };
 
 function conversationKind(convo: Doc<"conversations">): "dm" | "group" {
   if (convo.kind === "group") return "group";
@@ -166,55 +160,6 @@ async function dedupePushTokenRows(
     await ctx.db.delete(dup._id);
   }
   return primary;
-}
-
-async function deliverExpoPushMessages(
-  ctx: ActionCtx,
-  messages: PushMessage[],
-): Promise<void> {
-  if (messages.length === 0) return;
-
-  const response = await fetch(EXPO_PUSH_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Accept-Encoding": "gzip, deflate",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(messages),
-  });
-
-  if (!response.ok) {
-    console.error(
-      "deliverExpoPushMessages: Expo API error",
-      response.status,
-      await response.text(),
-    );
-    return;
-  }
-
-  const result = (await response.json()) as { data?: ExpoPushTicket[] };
-  const tickets = result.data ?? [];
-  const invalidTokens: string[] = [];
-
-  for (let i = 0; i < tickets.length; i++) {
-    const ticket = tickets[i];
-    if (ticket.status === "error") {
-      const err = ticket.details?.error;
-      if (err === "DeviceNotRegistered") {
-        const msg = messages[i];
-        if (msg) invalidTokens.push(msg.to);
-      } else {
-        console.error("deliverExpoPushMessages: ticket error", ticket);
-      }
-    }
-  }
-
-  if (invalidTokens.length > 0) {
-    await ctx.runMutation(internal.pushNotifications.pruneInvalidPushTokens, {
-      tokens: invalidTokens,
-    });
-  }
 }
 
 export const registerPushToken = mutation({
@@ -344,54 +289,6 @@ export const getChatPushPayload = internalQuery({
   },
 });
 
-export const getWishlistListingPushPayload = internalQuery({
-  args: { listingId: v.id("listings") },
-  returns: pushPayloadValidator,
-  handler: async (ctx, args) => {
-    const listing = await ctx.db.get(args.listingId);
-    if (!listing || listing.status !== "active") {
-      return null;
-    }
-
-    const owner = await ctx.db.get(listing.ownerUserId);
-    const posterName = owner?.name?.trim() || "Someone";
-    const dateLabel = formatListingDate(listing.dateTime);
-    const typeLabel = formatListingTypeLabel(listing);
-    const title = `New ${listing.college} formal`;
-    const body = `${posterName} · ${dateLabel} · ${typeLabel}`;
-    const data = {
-      url: `/listing/${args.listingId}`,
-      listingId: args.listingId,
-    };
-
-    const rows = await ctx.db
-      .query("collegeWishlists")
-      .withIndex("by_college", (q) => q.eq("college", listing.college))
-      .collect();
-
-    const messages: PushMessage[] = [];
-    const seen = new Set<string>();
-
-    for (const row of rows) {
-      if (row.userId === listing.ownerUserId) continue;
-      if (seen.has(row.userId)) continue;
-      seen.add(row.userId);
-
-      if (!(await shouldNotifyUser(ctx, row.userId))) continue;
-
-      const tokens = await getTokensForUser(ctx, row.userId);
-      if (tokens.length === 0) continue;
-
-      for (const token of tokens) {
-        messages.push({ to: token, title, body, data });
-      }
-    }
-
-    if (messages.length === 0) return null;
-    return { messages };
-  },
-});
-
 export const pruneInvalidPushTokens = internalMutation({
   args: { tokens: v.array(v.string()) },
   returns: v.null(),
@@ -423,20 +320,67 @@ export const sendChatMessagePush = internalAction({
   },
 });
 
-export const sendWishlistListingPush = internalAction({
-  args: { listingId: v.id("listings") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const payload = await ctx.runQuery(
-      internal.pushNotifications.getWishlistListingPushPayload,
-      { listingId: args.listingId },
-    );
+const webSubscriptionValidator = v.object({
+  endpoint: v.string(),
+  p256dh: v.string(),
+  auth: v.string(),
+});
 
-    if (!payload || payload.messages.length === 0) {
-      return null;
+/**
+ * Web push for a chat message: one item per recipient with browser
+ * subscriptions, gated by their "Social" push setting (the mobile app keeps
+ * using `pushChatAlerts`). Chat never creates bell rows.
+ */
+export const getChatWebPushPayload = internalQuery({
+  args: { messageId: v.id("messages") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      items: v.array(
+        v.object({
+          title: v.string(),
+          body: v.string(),
+          url: v.string(),
+          tag: v.string(),
+          subscriptions: v.array(webSubscriptionValidator),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, { messageId }) => {
+    const message = await ctx.db.get(messageId);
+    if (!message) return null;
+    const convo = await ctx.db.get(message.conversationId);
+    if (!convo) return null;
+
+    const sender = await ctx.db.get(message.senderUserId);
+    const senderName = sender?.name?.trim() || "User";
+    const preview = truncatePreview(message.body);
+    const isGroup = conversationKind(convo) === "group";
+    const recipientIds = isGroup
+      ? (await getGroupMemberUserIds(ctx, convo._id)).filter((id) => id !== message.senderUserId)
+      : [otherParticipantId(convo, message.senderUserId)];
+    const title = isGroup ? await resolveGroupTitle(ctx, convo, message.senderUserId) : senderName;
+    const body = isGroup ? `${senderName}: ${preview}` : preview;
+    const url = `/?tab=chats&conversation=${convo._id}`;
+
+    const items = [];
+    for (const recipientId of recipientIds) {
+      const user = await ctx.db.get(recipientId);
+      if (!user || user.deletedAt !== undefined || !pushAllowed(user, "social")) continue;
+      const subs = await ctx.db
+        .query("webPushSubscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", recipientId))
+        .take(20);
+      if (subs.length === 0) continue;
+      items.push({
+        title,
+        body,
+        url,
+        tag: `chat:${convo._id}`,
+        subscriptions: subs.map((s) => ({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth })),
+      });
     }
-
-    await deliverExpoPushMessages(ctx, payload.messages);
-    return null;
+    return items.length > 0 ? { items } : null;
   },
 });

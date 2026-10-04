@@ -1,5 +1,6 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { occupiedSeats } from "./seats";
 import { claimStorageOwnership, deleteStorageAndOwnership } from "./uploadOwnership";
 
 const ALLOWED_MENU_FILE_TYPES = new Set([
@@ -49,13 +50,13 @@ export function listingIsPast(dateTime: string, nowMs: number): boolean {
 }
 
 export function resolveStatusAfterEdit(
-  listing: Pick<Doc<"listings">, "status" | "members" | "groupSize">,
+  listing: Pick<Doc<"listings">, "status" | "members" | "groupSize" | "guestSeats">,
   finalDateTime: string,
   finalGroupSize: number,
   nowMs: number,
 ): Doc<"listings">["status"] | undefined {
   const past = listingIsPast(finalDateTime, nowMs);
-  const newSeats = finalGroupSize - listing.members.length;
+  const newSeats = finalGroupSize - occupiedSeats(listing);
 
   if (past) {
     if (listing.status === "active") {
@@ -116,28 +117,6 @@ export async function expireListing(
 
   await declinePendingRequestsForListing(ctx, listingId);
   await ctx.db.patch(listingId, { status: "expired" });
-}
-
-export function resolveRequestType(
-  req: Pick<Doc<"requests">, "requestType" | "offeringListingId">,
-): "swap" | "pay" {
-  return req.requestType ?? (req.offeringListingId !== undefined ? "swap" : "pay");
-}
-
-export const OFFERING_NO_SWAP_CAPACITY_MESSAGE =
-  "Your listing has no seats left to offer in new swaps.";
-
-/** Pending + accepted swaps that reserve seats on an offering listing. */
-export function countReservedSwapsForOffering(
-  mine: Doc<"requests">[],
-  offeringListingId: Id<"listings">,
-): number {
-  return mine.filter(
-    (item) =>
-      item.offeringListingId === offeringListingId &&
-      resolveRequestType(item) === "swap" &&
-      (item.status === "pending" || item.status === "accepted"),
-  ).length;
 }
 
 export async function enrichListing(

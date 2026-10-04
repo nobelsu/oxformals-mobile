@@ -10,4 +10,34 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "pay hosts their credits",
+  { hours: 1 },
+  internal.credits.settleDueHolds,
+  {},
+);
+
+// Retention limits promised in the privacy policy (see convex/retention.ts).
+crons.cron(
+  "enforce retention limits",
+  "30 3 * * *",
+  internal.retention.runDaily,
+  {},
+);
+
+// 08:00 and 09:00 UTC: whichever is 09:00 in London sends the reminders.
+crons.cron(
+  "formal tomorrow reminders",
+  "0 8,9 * * *",
+  internal.notifications.sendFormalReminders,
+  {},
+);
+
+crons.cron(
+  "delete old notifications",
+  "45 3 * * *",
+  internal.notifications.pruneOldNotifications,
+  {},
+);
+
 export default crons;

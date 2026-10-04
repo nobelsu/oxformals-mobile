@@ -1,4 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { blockedEitherWay, blockedIdsFor } from "./blocks";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
@@ -10,19 +11,58 @@ import {
   scheduleFormalCompletion,
   syncListingAttendanceGuests,
 } from "./collegeStats";
+import { detachMember, removeUserFromListingGroup } from "./listingMembership";
 import {
-  countReservedSwapsForOffering,
+  creditBalance,
+  holdSeatCredits,
+  refundListingCredits,
+  refundSeatHolderCredits,
+} from "./credits";
+import { areFriends } from "./follows";
+import { notify } from "./notify";
+import { newSeatToken, SEAT_LINK_TTL_MS } from "./seatLinks";
+import {
+  countByMethod,
+  guestsBroughtBy,
+  MAX_GUESTS,
+  occupiedSeats,
+  requestSeats,
+  seatMethodValidator,
+  unclaimedLinkSeats,
+  withGuestSeats,
+  type Seat,
+} from "./seats";
+import {
+  sendFormalNotices,
+  swapSeatingMember,
+  undoSwap,
+  undoSwapsForCancelledListing,
+  type FormalNotice,
+} from "./swapLinks";
+import { normalizeCollegeName } from "../lib/data/colleges";
+import { roleNeedsYear } from "./roles";
+import {
   declinePendingRequestsForListing,
   deleteMenuPdfIfPresent,
   enrichListing,
   expireListing,
   listingIsPast,
-  OFFERING_NO_SWAP_CAPACITY_MESSAGE,
   resolveStatusAfterEdit,
   validateMenuPdfId,
 } from "./listingHelpers";
-import { requireActiveUser } from "./guards";
-import { normalizeCollegeName } from "../lib/data/colleges";
+import {
+  optionalUserId,
+  requireActiveUser,
+  sanitizeLimitedUser,
+  sanitizePublicUser,
+} from "./guards";
+
+/** A listing host as signed-out visitors see them: private accounts limited. */
+function signedOutHostSummary(user: Doc<"users">) {
+  return user.isPrivate === true
+    ? sanitizeLimitedUser(user)
+    : sanitizePublicUser(user);
+}
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -32,9 +72,53 @@ const listingTypeValidator = v.union(
   v.literal("both"),
 );
 
-const requestTypeValidator = v.union(v.literal("swap"), v.literal("pay"));
+const formalTypeValidator = v.union(
+  v.literal("matchmaking"),
+  v.literal("social"),
+  v.literal("networking"),
+);
+
+const requestTypeValidator = v.union(
+  v.literal("swap"),
+  v.literal("pay"),
+  v.literal("credit"),
+);
 
 const menuPdfIdOrClear = v.optional(v.union(v.id("_storage"), v.null()));
+
+const listingStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("confirmed"),
+  v.literal("closed"),
+  v.literal("expired"),
+);
+
+const enrichedListingValidator = v.object({
+  _id: v.id("listings"),
+  _creationTime: v.number(),
+  ownerUserId: v.id("users"),
+  college: v.string(),
+  dateTime: v.string(),
+  groupSize: groupSizeValidator,
+  seatsAvailable: v.number(),
+  members: v.array(v.id("users")),
+  year: v.string(),
+  role: v.string(),
+  message: v.string(),
+  menu: v.optional(v.string()),
+  menuPdfId: v.optional(v.id("_storage")),
+  status: listingStatusValidator,
+  listingType: v.optional(listingTypeValidator),
+  price: v.optional(v.number()),
+  attendanceAppliedAt: v.optional(v.number()),
+  attendanceGuestCount: v.optional(v.number()),
+  formalType: v.optional(formalTypeValidator),
+  guestSeats: v.optional(
+    v.array(v.object({ userId: v.id("users"), count: v.number() })),
+  ),
+  menuPdfUrl: v.union(v.string(), v.null()),
+  menuFileContentType: v.union(v.string(), v.null()),
+});
 
 function resolveListingType(
   listing: Doc<"listings">,
@@ -42,7 +126,7 @@ function resolveListingType(
   return listing.listingType ?? "swap";
 }
 
-function resolveRequestType(req: Doc<"requests">): "swap" | "pay" {
+function resolveRequestType(req: Doc<"requests">): "swap" | "pay" | "credit" {
   return req.requestType ?? (req.offeringListingId !== undefined ? "swap" : "pay");
 }
 
@@ -63,8 +147,10 @@ function validateListingTypeAndPrice(
 
 function listingAllowsRequestType(
   listingType: "swap" | "pay" | "both",
-  requestType: "swap" | "pay",
+  requestType: "swap" | "pay" | "credit",
 ): boolean {
+  // Every listing takes credits; that's what makes them worth earning.
+  if (requestType === "credit") return true;
   if (listingType === "both") return true;
   return listingType === requestType;
 }
@@ -93,7 +179,61 @@ export const listListings = query({
   args: {},
   handler: async (ctx) => {
     const listings = await ctx.db.query("listings").order("desc").take(200);
-    return Promise.all(listings.map((listing) => enrichListing(ctx, listing)));
+    // Hosts you've blocked, or who blocked you, drop out of every listing view.
+    const blocked = await blockedIdsFor(ctx, await optionalUserId(ctx));
+    return Promise.all(
+      listings
+        .filter((listing) => !blocked.has(listing.ownerUserId))
+        .map((listing) => enrichListing(ctx, listing)),
+    );
+  },
+});
+
+/**
+ * Upcoming open formals for the logged-out landing page. Deliberately narrow:
+ * the landing page must not pay for `listListings` (200 docs) plus
+ * `users.listPublic` (500 docs) to render a handful of rows.
+ *
+ * Returns each listing joined with its owner's public summary so the hero
+ * renders in a single round trip instead of waiting on a second
+ * `users.getPublicByIds` query keyed off the first result.
+ */
+export const listUpcomingPublic = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 5, 1), 20);
+    const nowIso = new Date().toISOString();
+    // Writes normalise `dateTime` via `new Date(timestamp).toISOString()`
+    // (see createListing/updateListing), so every stored value is a
+    // uniform UTC ISO string and this range query sorts/filters correctly
+    // via plain lexicographic comparison. That invariant isn't enforced by
+    // the schema, and this deployment is shared with a sibling repo whose
+    // `convex/` has diverged — a row written in another format would
+    // silently escape this filter.
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_status_and_dateTime", (q) =>
+        q.eq("status", "active").gt("dateTime", nowIso),
+      )
+      .order("asc")
+      .take(limit);
+    const enriched = await Promise.all(
+      listings.map((listing) => enrichListing(ctx, listing)),
+    );
+
+    // Multiple listings can share an owner; look each owner up once.
+    const ownerIds = [...new Set(enriched.map((listing) => listing.ownerUserId))];
+    const ownerDocs = await Promise.all(ownerIds.map((id) => ctx.db.get(id)));
+    const ownersById = new Map(
+      ownerDocs
+        .filter((user): user is Doc<"users"> => user !== null)
+        .map((user) => [user._id, signedOutHostSummary(user)]),
+    );
+
+    return enriched.flatMap((listing) => {
+      const owner = ownersById.get(listing.ownerUserId);
+      return owner ? [{ ...listing, owner }] : [];
+    });
   },
 });
 
@@ -115,6 +255,7 @@ export const listActiveListingsForCollege = query({
   args: {
     college: v.string(),
   },
+  returns: v.array(enrichedListingValidator),
   handler: async (ctx, args) => {
     const college = normalizeCollegeName(args.college);
     const listings = await ctx.db
@@ -125,6 +266,57 @@ export const listActiveListingsForCollege = query({
       .order("desc")
       .take(50);
     return Promise.all(listings.map((listing) => enrichListing(ctx, listing)));
+  },
+});
+
+/**
+ * Hosts of a college's open formals, for signed-out visitors of the college
+ * page (signed-in visitors resolve people through `users.listPublic`).
+ */
+export const listActiveHostsForCollege = query({
+  args: { college: v.string() },
+  handler: async (ctx, args) => {
+    const college = normalizeCollegeName(args.college);
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_college_and_status", (q) =>
+        q.eq("college", college).eq("status", "active"),
+      )
+      .order("desc")
+      .take(50);
+    const ownerIds = [...new Set(listings.map((l) => l.ownerUserId))];
+    const owners = await Promise.all(ownerIds.map((id) => ctx.db.get(id)));
+    return owners
+      .filter(
+        (user): user is Doc<"users"> =>
+          user !== null && user.deletedAt === undefined,
+      )
+      .map(signedOutHostSummary);
+  },
+});
+
+/**
+ * Hosts of upcoming active listings, for signed-out browsing (the user
+ * directory needs sign-in). Private hosts are limited to name, college, year
+ * and role.
+ */
+export const listActiveHosts = query({
+  args: {},
+  handler: async (ctx) => {
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_status_and_dateTime", (q) =>
+        q.eq("status", "active").gt("dateTime", new Date().toISOString()),
+      )
+      .take(300);
+    const ownerIds = [...new Set(listings.map((l) => l.ownerUserId))];
+    const owners = await Promise.all(ownerIds.map((id) => ctx.db.get(id)));
+    return owners
+      .filter(
+        (user): user is Doc<"users"> =>
+          user !== null && user.deletedAt === undefined,
+      )
+      .map(signedOutHostSummary);
   },
 });
 
@@ -162,6 +354,7 @@ export const createListing = mutation({
     menu: v.optional(v.string()),
     menuPdfId: v.optional(v.id("_storage")),
     listingType: listingTypeValidator,
+    formalType: v.optional(formalTypeValidator),
     price: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -170,9 +363,9 @@ export const createListing = mutation({
     if (!user) throw new Error("User profile not found");
 
     const college = user.college?.trim() ?? "";
-    const year = user.year?.trim() ?? "";
     const role = user.role?.trim() ?? "";
-    if (!college || !year || !role) {
+    const year = roleNeedsYear(role) ? (user.year?.trim() ?? "") : "";
+    if (!college || !role || (roleNeedsYear(role) && !year)) {
       throw new Error("Set college, year, and role in your profile before posting.");
     }
 
@@ -200,21 +393,31 @@ export const createListing = mutation({
       menu: (args.menu ?? "").trim(),
       status: "active",
       listingType: args.listingType,
+      formalType: args.formalType ?? "social",
       ...(args.menuPdfId !== undefined ? { menuPdfId: args.menuPdfId } : {}),
       ...(args.listingType === "swap"
         ? {}
         : { price: args.price }),
     });
 
-    await ctx.scheduler.runAfter(0, internal.emails.notifyWishlistForNewListing, {
-      listingId,
-    });
-
-    await ctx.scheduler.runAfter(
-      0,
-      internal.pushNotifications.sendWishlistListingPush,
-      { listingId },
-    );
+    // Everyone who wants to go to this college hears about it (bell, push,
+    // and email if "Credits & reminders" email is on).
+    const wishers = await ctx.db
+      .query("collegeWishlists")
+      .withIndex("by_college", (q) => q.eq("college", college))
+      .take(500);
+    const told = new Set<Id<"users">>();
+    for (const w of wishers) {
+      if (w.userId === userId || told.has(w.userId)) continue;
+      told.add(w.userId);
+      await notify(ctx, {
+        userId: w.userId,
+        kind: "wishlist_listing",
+        actorId: userId,
+        listingId,
+        data: { college, dateTime: new Date(timestamp).toISOString() },
+      });
+    }
 
     const listing = await ctx.db.get(listingId);
     if (listing) {
@@ -231,6 +434,30 @@ export const createRequest = mutation({
     targetListingId: v.id("listings"),
     offeringListingId: v.optional(v.id("listings")),
     message: v.string(),
+    /** Unnamed "+N" guests, paid by the requester. */
+    guests: v.optional(v.number()),
+    /** How each guest seat is paid; defaults to `requestType` for all. */
+    guestMethods: v.optional(v.array(seatMethodValidator)),
+    /**
+     * Named friends (mutual follows). A friend can pay for their own seat
+     * (credit or cash) or the requester can cover it.
+     */
+    friends: v.optional(
+      v.array(
+        v.object({
+          userId: v.id("users"),
+          paysOwn: v.boolean(),
+          method: seatMethodValidator,
+        }),
+      ),
+    ),
+    /**
+     * Seats for people not on Oxformals yet. Each gets a link to claim. They
+     * pay with their own credit (`paysOwn`) or the requester covers them.
+     */
+    links: v.optional(
+      v.array(v.object({ paysOwn: v.boolean(), method: seatMethodValidator })),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -246,8 +473,92 @@ export const createRequest = mutation({
     if (target.ownerUserId === userId) {
       throw new Error("You cannot request your own listing.");
     }
-    if (!listingAllowsRequestType(targetType, args.requestType)) {
-      throw new Error("This listing does not accept that type of request.");
+    if (await blockedEitherWay(ctx, userId, target.ownerUserId)) {
+      throw new Error("This listing is no longer available.");
+    }
+
+    const guests = args.guests ?? 0;
+    const friends = args.friends ?? [];
+    const links = args.links ?? [];
+    if (
+      !Number.isInteger(guests) ||
+      guests < 0 ||
+      guests + friends.length + links.length > MAX_GUESTS
+    ) {
+      throw new Error(`You can bring up to ${MAX_GUESTS} people.`);
+    }
+    for (const l of links) {
+      if (l.paysOwn && l.method !== "credit") {
+        throw new Error("Someone new can only pay for themselves with a credit.");
+      }
+    }
+    if (args.guestMethods && args.guestMethods.length !== guests) {
+      throw new Error("Each guest needs a way to pay.");
+    }
+    const seen = new Set<string>();
+    for (const f of friends) {
+      if (f.userId === userId) throw new Error("You're already in your own request.");
+      if (f.userId === target.ownerUserId) {
+        throw new Error("The host is already going.");
+      }
+      if (seen.has(f.userId)) throw new Error("You've named someone twice.");
+      seen.add(f.userId);
+      if (!(await areFriends(ctx, userId, f.userId))) {
+        throw new Error("You can only name people you follow who follow you back.");
+      }
+      if (target.members.includes(f.userId)) {
+        const friend = await ctx.db.get(f.userId);
+        throw new Error(`${friend?.name?.split(" ")[0] ?? "They"}'re already going.`);
+      }
+      if (f.paysOwn && f.method === "swap") {
+        throw new Error("Friends paying for themselves can use a credit or cash.");
+      }
+    }
+    const now = Date.now();
+    const linkTokens: string[] = [];
+    for (let i = 0; i < links.length; i++) linkTokens.push(await newSeatToken(ctx));
+    const party: NonNullable<Doc<"requests">["party"]> = [
+      ...friends.map((f) => ({
+        kind: "friend" as const,
+        userId: f.userId,
+        payerId: f.paysOwn ? f.userId : userId,
+        method: f.method,
+        response: "pending" as const,
+      })),
+      ...links.map((l, i) => ({
+        kind: "link" as const,
+        token: linkTokens[i],
+        // The requester until someone claims it (then the claimer, if paysOwn).
+        payerId: userId,
+        method: l.method,
+        paysOwn: l.paysOwn,
+        response: "pending" as const,
+        expiresAt: now + SEAT_LINK_TTL_MS,
+      })),
+      ...Array.from({ length: guests }, (_, i) => ({
+        kind: "guest" as const,
+        payerId: userId,
+        method: args.guestMethods?.[i] ?? args.requestType,
+      })),
+    ];
+    const draft = {
+      fromUserId: userId,
+      requestType: args.requestType,
+      party,
+    } as Doc<"requests">;
+    const seats = requestSeats(draft);
+
+    if (seats.length > target.seatsAvailable) {
+      throw new Error(
+        target.seatsAvailable === 1
+          ? "There's only 1 seat left."
+          : `There are only ${target.seatsAvailable} seats left.`,
+      );
+    }
+    for (const seat of seats) {
+      if (!listingAllowsRequestType(targetType, seat.method)) {
+        throw new Error("This listing does not accept that type of request.");
+      }
     }
 
     const mine = await ctx.db
@@ -268,117 +579,146 @@ export const createRequest = mutation({
       );
     }
 
-    if (args.requestType === "pay") {
-      if (args.offeringListingId !== undefined) {
-        throw new Error("Pay requests cannot include an offering listing.");
+    // My own seat plus every party seat I cover. A link seat the new person
+    // pays for isn't mine, even though I'm its placeholder payer.
+    const myCreditSeats =
+      (args.requestType === "credit" ? 1 : 0) +
+      party.filter(
+        (p) => p.method === "credit" && p.payerId === userId && p.paysOwn !== true,
+      ).length;
+    if (myCreditSeats > 0) {
+      const balance = await creditBalance(ctx, userId);
+      if (balance < myCreditSeats) {
+        throw new Error(
+          balance === 0
+            ? "You don't have any credits. Host a guest at your college's formal to earn one."
+            : `That needs ${myCreditSeats} credits and you have ${balance}.`,
+        );
       }
+    }
 
-      const existingPay = mine.find(
-        (item) =>
-          item.targetListingId === args.targetListingId &&
-          resolveRequestType(item) === "pay" &&
-          item.status === "pending",
+    const swapSeats = countByMethod(seats, "swap");
+    if (swapSeats > 0) {
+      if (!args.offeringListingId) {
+        throw new Error("Swap requests must include an offering listing.");
+      }
+      if (args.targetListingId === args.offeringListingId) {
+        throw new Error("You must offer a different listing.");
+      }
+      const offering = await getListingOrThrow(ctx, args.offeringListingId);
+      if (offering.status !== "active") {
+        throw new Error("Your offering listing must be active.");
+      }
+      if (listingIsPast(offering.dateTime, Date.now())) {
+        throw new Error("Your offering formal has passed.");
+      }
+      if (offering.ownerUserId !== userId) {
+        throw new Error("You can only offer your own listing.");
+      }
+      if (!listingSupportsSwap(resolveListingType(offering))) {
+        throw new Error("Pay listings cannot be used in a swap.");
+      }
+      if (offering.seatsAvailable < swapSeats) {
+        throw new Error(
+          `Swapping ${swapSeats} seats needs ${swapSeats} free seats at your formal, and it has ${offering.seatsAvailable}.`,
+        );
+      }
+    } else if (args.offeringListingId !== undefined) {
+      throw new Error("Only swap requests include an offering listing.");
+    }
+
+    // Two hosts who each asked for the other's formal: the earlier request
+    // already describes this swap, so accept it rather than recording a second
+    // one. One accepted request per swap keeps the seats linked exactly once.
+    // Only for one-for-one swaps; group swaps always need the host to accept.
+    if (args.requestType === "swap" && party.length === 0 && args.offeringListingId) {
+      const mirrorCandidates = await ctx.db
+        .query("requests")
+        .withIndex("by_targetListingId_and_status", (q) =>
+          q
+            .eq("targetListingId", args.offeringListingId!)
+            .eq("status", "pending"),
+        )
+        .take(200);
+      const mirror = mirrorCandidates.find(
+        (r) =>
+          resolveRequestType(r) === "swap" &&
+          r.fromUserId === target.ownerUserId &&
+          r.offeringListingId === args.targetListingId &&
+          (r.party ?? []).length === 0,
       );
-      if (existingPay) {
-        throw new Error("You already sent this request.");
+
+      if (mirror) {
+        await performAccept(ctx, mirror);
+        const theirs = await ctx.db.get(mirror.targetListingId);
+        await notify(ctx, {
+          userId: mirror.fromUserId,
+          kind: "request_accepted",
+          actorId: userId,
+          listingId: mirror.targetListingId,
+          requestId: mirror._id,
+          ...(theirs ? { data: { college: theirs.college, dateTime: theirs.dateTime } } : {}),
+        });
+        return { requestId: mirror._id, autoAccepted: true as const };
       }
-
-      const requestId = await ctx.db.insert("requests", {
-        fromUserId: userId,
-        toUserId: target.ownerUserId,
-        targetListingId: args.targetListingId,
-        requestType: "pay",
-        message: args.message.trim(),
-        status: "pending",
-      });
-
-      await ctx.scheduler.runAfter(0, internal.emails.sendNewRequestEmail, {
-        requestId,
-      });
-
-      return { requestId, autoAccepted: false as const };
-    }
-
-    if (!args.offeringListingId) {
-      throw new Error("Swap requests must include an offering listing.");
-    }
-    if (args.targetListingId === args.offeringListingId) {
-      throw new Error("You must offer a different listing.");
-    }
-
-    const offering = await getListingOrThrow(ctx, args.offeringListingId);
-    if (offering.status !== "active") {
-      throw new Error("Your offering listing must be active.");
-    }
-    if (listingIsPast(offering.dateTime, Date.now())) {
-      throw new Error("Your offering formal has passed.");
-    }
-    if (offering.ownerUserId !== userId) {
-      throw new Error("You can only offer your own listing.");
-    }
-    if (!listingSupportsSwap(resolveListingType(offering))) {
-      throw new Error("Pay listings cannot be used in a swap.");
-    }
-    if (offering.seatsAvailable <= 0) {
-      throw new Error(OFFERING_NO_SWAP_CAPACITY_MESSAGE);
-    }
-    const reservedForOffering = countReservedSwapsForOffering(
-      mine,
-      args.offeringListingId,
-    );
-    if (reservedForOffering >= offering.seatsAvailable) {
-      throw new Error(OFFERING_NO_SWAP_CAPACITY_MESSAGE);
-    }
-
-    const existingSwap = mine.find(
-      (item) =>
-        item.targetListingId === args.targetListingId &&
-        item.offeringListingId === args.offeringListingId &&
-        resolveRequestType(item) === "swap" &&
-        item.status === "pending",
-    );
-    if (existingSwap) {
-      throw new Error("You already sent this request.");
     }
 
     const requestId = await ctx.db.insert("requests", {
       fromUserId: userId,
       toUserId: target.ownerUserId,
       targetListingId: args.targetListingId,
-      offeringListingId: args.offeringListingId,
-      requestType: "swap",
+      ...(swapSeats > 0 ? { offeringListingId: args.offeringListingId } : {}),
+      requestType: args.requestType,
       message: args.message.trim(),
       status: "pending",
+      ...(party.length > 0 ? { party } : {}),
     });
 
-    await ctx.scheduler.runAfter(0, internal.emails.sendNewRequestEmail, {
+    const formal = { college: target.college, dateTime: target.dateTime };
+    // The new-request email is sent by notify's delivery (it obeys prefs).
+    await notify(ctx, {
+      userId: target.ownerUserId,
+      kind: "request_received",
+      actorId: userId,
+      listingId: target._id,
       requestId,
+      data: { ...formal, count: seats.length },
     });
-
-    const mirrorCandidates = await ctx.db
-      .query("requests")
-      .withIndex("by_targetListingId_and_status", (q) =>
-        q
-          .eq("targetListingId", args.offeringListingId!)
-          .eq("status", "pending"),
-      )
-      .take(200);
-    const mirror = mirrorCandidates.find(
-      (r) =>
-        resolveRequestType(r) === "swap" &&
-        r.offeringListingId === args.targetListingId &&
-        r._id !== requestId,
-    );
-
-    if (mirror) {
-      await performAccept(ctx, mirror, [requestId]);
-      await ctx.db.patch(requestId, { status: "accepted" });
-      return { requestId, autoAccepted: true as const };
+    for (const f of friends) {
+      await ctx.db.insert("partyInvites", { requestId, userId: f.userId });
+      await notify(ctx, {
+        userId: f.userId,
+        kind: "party_invite",
+        actorId: userId,
+        listingId: target._id,
+        requestId,
+        data: { ...formal, paysOwn: f.paysOwn, method: f.method },
+      });
+    }
+    for (const token of linkTokens) {
+      await ctx.db.insert("seatLinks", { token, requestId, createdAt: now });
+      await ctx.scheduler.runAfter(SEAT_LINK_TTL_MS, internal.seatLinks.expireSeatLink, {
+        requestId,
+        token,
+      });
     }
 
-    return { requestId, autoAccepted: false as const };
+    return { requestId, autoAccepted: false as const, links: linkTokens };
   },
 });
+
+/** Tell a requester their request was turned down (by the host, or because it filled up). */
+async function notifyDeclined(ctx: MutationCtx, req: Doc<"requests">) {
+  const target = await ctx.db.get(req.targetListingId);
+  await notify(ctx, {
+    userId: req.fromUserId,
+    kind: "request_declined",
+    actorId: req.toUserId,
+    listingId: req.targetListingId,
+    requestId: req._id,
+    ...(target ? { data: { college: target.college, dateTime: target.dateTime } } : {}),
+  });
+}
 
 export const declineRequest = mutation({
   args: { requestId: v.id("requests") },
@@ -390,6 +730,7 @@ export const declineRequest = mutation({
     if (req.status !== "pending") throw new Error("Request is no longer pending");
 
     await ctx.db.patch(req._id, { status: "declined" });
+    await notifyDeclined(ctx, req);
     return req._id;
   },
 });
@@ -403,16 +744,89 @@ export const withdrawRequest = mutation({
     if (req.fromUserId !== userId) throw new Error("Not allowed");
     if (req.status !== "pending") throw new Error("Request is no longer pending");
 
+    for (const invite of await ctx.db
+      .query("partyInvites")
+      .withIndex("by_requestId", (q) => q.eq("requestId", req._id))
+      .take(10)) {
+      await ctx.db.delete(invite._id);
+    }
+    for (const link of await ctx.db
+      .query("seatLinks")
+      .withIndex("by_requestId", (q) => q.eq("requestId", req._id))
+      .take(10)) {
+      await ctx.db.delete(link._id);
+    }
     await ctx.db.delete(req._id);
     return req._id;
   },
 });
 
+/** Take `count` seats on a listing for `holderId` (plus any named friends). */
+async function seatOnListing(
+  ctx: MutationCtx,
+  listing: Doc<"listings">,
+  args: {
+    newMembers: Id<"users">[];
+    guestHolderId: Id<"users">;
+    guestCount: number;
+    fullStatus: "closed" | "confirmed";
+  },
+): Promise<number> {
+  const taken = args.newMembers.length + args.guestCount;
+  const newSeats = listing.seatsAvailable - taken;
+  await ctx.db.patch(listing._id, {
+    seatsAvailable: newSeats,
+    members: [...listing.members, ...args.newMembers],
+    ...(args.guestCount > 0
+      ? {
+          guestSeats: withGuestSeats(
+            listing.guestSeats,
+            args.guestHolderId,
+            args.guestCount,
+          ),
+        }
+      : {}),
+    ...(newSeats === 0 ? { status: args.fullStatus } : {}),
+  });
+  const updated = await ctx.db.get(listing._id);
+  if (updated) {
+    await syncListingAttendanceGuests(ctx, updated, Date.now());
+  }
+  return newSeats;
+}
+
+async function declinePendingWhenFull(
+  ctx: MutationCtx,
+  listingId: Id<"listings">,
+  index: "by_targetListingId_and_status" | "by_offeringListingId_and_status",
+  skip: Set<Id<"requests">>,
+) {
+  const pending =
+    index === "by_targetListingId_and_status"
+      ? await ctx.db
+          .query("requests")
+          .withIndex(index, (q) =>
+            q.eq("targetListingId", listingId).eq("status", "pending"),
+          )
+          .take(200)
+      : await ctx.db
+          .query("requests")
+          .withIndex(index, (q) =>
+            q.eq("offeringListingId", listingId).eq("status", "pending"),
+          )
+          .take(200);
+  for (const r of pending) {
+    if (skip.has(r._id)) continue;
+    await ctx.db.patch(r._id, { status: "declined" });
+    await notifyDeclined(ctx, r);
+  }
+}
+
 async function assertCanAcceptRequest(
   ctx: MutationCtx,
   req: Doc<"requests">,
+  seats: Seat[],
 ): Promise<{ target: Doc<"listings">; offering?: Doc<"listings"> }> {
-  const requestType = resolveRequestType(req);
   const target = await getListingOrThrow(ctx, req.targetListingId);
 
   if (target.status !== "active") {
@@ -421,13 +835,40 @@ async function assertCanAcceptRequest(
   if (listingIsPast(target.dateTime, Date.now())) {
     throw new Error("This formal has passed, so this request can't be accepted.");
   }
-  if (target.seatsAvailable <= 0) {
+  if (target.seatsAvailable < seats.length) {
     throw new Error(
-      "Your listing has no seats left, so this request can't be accepted.",
+      target.seatsAvailable <= 0
+        ? "Your listing has no seats left, so this request can't be accepted."
+        : `This request needs ${seats.length} seats and your listing has ${target.seatsAvailable} left.`,
     );
   }
+  for (const seat of seats) {
+    if (seat.userId && target.members.includes(seat.userId)) {
+      throw new Error("Someone in this request is already in your group.");
+    }
+  }
+  const unclaimed = unclaimedLinkSeats(req);
+  if (unclaimed > 0) {
+    throw new Error(
+      unclaimed === 1
+        ? "Waiting for someone in this group to join Oxformals."
+        : `Waiting for ${unclaimed} people in this group to join Oxformals.`,
+    );
+  }
+  // A friend paying for their own seat has to say "I'm in" first — that's
+  // what authorises taking their credit.
+  for (const p of req.party ?? []) {
+    if (p.kind !== "friend" || p.response === "out" || !p.userId) continue;
+    if (p.payerId === p.userId && p.response !== "in") {
+      const friend = await ctx.db.get(p.userId);
+      throw new Error(
+        `Waiting for ${friend?.name?.split(" ")[0] ?? "a friend"} to confirm they're coming.`,
+      );
+    }
+  }
 
-  if (requestType === "pay") {
+  const swapSeats = countByMethod(seats, "swap");
+  if (swapSeats === 0) {
     return { target };
   }
 
@@ -446,10 +887,15 @@ async function assertCanAcceptRequest(
       "Their offering formal has passed, so this swap can't be accepted.",
     );
   }
-  if (offering.seatsAvailable <= 0) {
+  if (offering.seatsAvailable < swapSeats) {
     throw new Error(
-      "Their offering listing has no seats left, so this swap can't be accepted.",
+      offering.seatsAvailable <= 0
+        ? "Their offering listing has no seats left, so this swap can't be accepted."
+        : `This swap needs ${swapSeats} seats at their formal and it has ${offering.seatsAvailable} left.`,
     );
+  }
+  if (offering.members.includes(req.toUserId)) {
+    throw new Error("You're already in their group.");
   }
 
   return { target, offering };
@@ -460,67 +906,65 @@ async function performAccept(
   req: Doc<"requests">,
   skipIds: Id<"requests">[] = [],
 ) {
-  const requestType = resolveRequestType(req);
-  const { target, offering } = await assertCanAcceptRequest(ctx, req);
+  const seats = requestSeats(req);
+  const { target, offering } = await assertCanAcceptRequest(ctx, req, seats);
 
   await ctx.db.patch(req._id, { status: "accepted" });
 
-  const newSeats = target.seatsAvailable - 1;
-  const newMembers = [...target.members, req.fromUserId];
-  await ctx.db.patch(req.targetListingId, {
-    seatsAvailable: newSeats,
-    members: newMembers,
-    ...(newSeats === 0 ? { status: "closed" as const } : {}),
+  // Named people become members; unnamed guests are held against the requester.
+  const named = seats.filter((s) => s.userId).map((s) => s.userId!);
+  const guestCount = seats.filter((s) => s.kind === "guest").length;
+  const newSeats = await seatOnListing(ctx, target, {
+    newMembers: named,
+    guestHolderId: req.fromUserId,
+    guestCount,
+    fullStatus: "closed",
   });
 
-  const updatedTarget = await ctx.db.get(req.targetListingId);
-  if (updatedTarget) {
-    await syncListingAttendanceGuests(ctx, updatedTarget, Date.now());
+  const creditSeats = seats.filter((s) => s.method === "credit");
+  if (creditSeats.length > 0) {
+    await holdSeatCredits(ctx, {
+      requestId: req._id,
+      listing: target,
+      charges: creditSeats.map((s) => ({
+        payerId: s.payerId,
+        seatHolderId: s.userId ?? req.fromUserId,
+        isGuest: s.kind === "guest",
+      })),
+    });
   }
 
   const idsToSkip = new Set([req._id, ...skipIds]);
-
   if (newSeats === 0) {
-    const pendingForTarget = await ctx.db
-      .query("requests")
-      .withIndex("by_targetListingId_and_status", (q) =>
-        q.eq("targetListingId", req.targetListingId).eq("status", "pending"),
-      )
-      .take(200);
-    for (const pending of pendingForTarget) {
-      if (idsToSkip.has(pending._id)) continue;
-      await ctx.db.patch(pending._id, { status: "declined" });
-    }
+    await declinePendingWhenFull(
+      ctx,
+      req.targetListingId,
+      "by_targetListingId_and_status",
+      idsToSkip,
+    );
   }
 
-  if (requestType === "pay" || !offering || !req.offeringListingId) {
+  const swapSeats = countByMethod(seats, "swap");
+  if (swapSeats === 0 || !offering || !req.offeringListingId) {
     return;
   }
 
-  const newOfferingSeats = offering.seatsAvailable - 1;
-  const newOfferingMembers = [...offering.members, req.toUserId];
-  await ctx.db.patch(req.offeringListingId, {
-    seatsAvailable: newOfferingSeats,
-    members: newOfferingMembers,
-    ...(newOfferingSeats === 0 ? { status: "confirmed" as const } : {}),
+  // Seats for seats: the host gets up to as many seats at the requester's
+  // formal — their own plus guest seats they can release later.
+  const newOfferingSeats = await seatOnListing(ctx, offering, {
+    newMembers: [req.toUserId],
+    guestHolderId: req.toUserId,
+    guestCount: swapSeats - 1,
+    fullStatus: "confirmed",
   });
 
-  const updatedOffering = await ctx.db.get(req.offeringListingId);
-  if (updatedOffering) {
-    await syncListingAttendanceGuests(ctx, updatedOffering, Date.now());
-  }
-
   if (newOfferingSeats === 0) {
-    const pendingForOffering = await ctx.db
-      .query("requests")
-      .withIndex("by_offeringListingId_and_status", (q) =>
-        q.eq("offeringListingId", req.offeringListingId!).eq("status", "pending"),
-      )
-      .take(200);
-    for (const pending of pendingForOffering) {
-      if (idsToSkip.has(pending._id)) continue;
-      await ctx.db.patch(pending._id, { status: "declined" });
-    }
+    await declinePendingWhenFull(
+      ctx,
+      req.offeringListingId,
+      "by_offeringListingId_and_status",
+      idsToSkip,
+    );
   }
 }
 
@@ -535,6 +979,15 @@ export const acceptRequest = mutation({
 
     await performAccept(ctx, req);
 
+    const target = await ctx.db.get(req.targetListingId);
+    await notify(ctx, {
+      userId: req.fromUserId,
+      kind: "request_accepted",
+      actorId: userId,
+      listingId: req.targetListingId,
+      requestId: req._id,
+      ...(target ? { data: { college: target.college, dateTime: target.dateTime } } : {}),
+    });
     return req._id;
   },
 });
@@ -543,45 +996,58 @@ export const leaveGroup = mutation({
   args: { listingId: v.id("listings") },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
-    const listing = await getListingOrThrow(ctx, args.listingId);
-
-    if (listing.ownerUserId === userId) {
-      throw new Error("The owner cannot leave their own group.");
-    }
-    if (!listing.members.includes(userId)) {
-      throw new Error("You are not a member of this group.");
-    }
-
-    const newMembers = listing.members.filter((m) => m !== userId);
-    const newSeats = listing.seatsAvailable + 1;
-    const nowMs = Date.now();
-    const reopened =
-      listing.status === "closed" &&
-      newSeats > 0 &&
-      !listingIsPast(listing.dateTime, nowMs);
-    await ctx.db.patch(args.listingId, {
-      members: newMembers,
-      seatsAvailable: newSeats,
-      ...(reopened ? { status: "active" as const } : {}),
-    });
-
-    const updated = await ctx.db.get(args.listingId);
-    if (updated) {
-      await syncListingAttendanceGuests(ctx, updated, Date.now());
-    }
-
-    const acceptedRequests = await ctx.db
-      .query("requests")
-      .withIndex("by_targetListingId_and_status", (q) =>
-        q.eq("targetListingId", args.listingId).eq("status", "accepted"),
-      )
-      .take(200);
-    for (const req of acceptedRequests) {
-      if (req.fromUserId === userId) {
-        await ctx.db.patch(req._id, { status: "declined" });
+    const link = await swapSeatingMember(ctx, args.listingId, userId);
+    const result = await removeUserFromListingGroup(ctx, args.listingId, userId);
+    // Leaving only gives up your own half of a swap; the other person keeps
+    // their seat at your formal.
+    if (link) {
+      await ctx.db.patch(link._id, { status: "declined" });
+      const listing = await ctx.db.get(args.listingId);
+      const me = await ctx.db.get(userId);
+      if (listing) {
+        await sendFormalNotices(ctx, [
+          {
+            userId: listing.ownerUserId,
+            subject: "Your swap partner left",
+            body: `${me?.name?.split(" ")[0] ?? "Your swap partner"} gave up their half of your swap. Your seat at their formal is still yours.`,
+            cta: "formals",
+            eyebrow: "Swap",
+            listingId: listing._id,
+          },
+        ]);
       }
     }
+    return result;
+  },
+});
 
+/**
+ * Give back one of your unnamed guest seats (e.g. the host of a group swap
+ * who got more seats than they need).
+ */
+export const releaseGuestSeat = mutation({
+  args: { listingId: v.id("listings") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const listing = await getListingOrThrow(ctx, args.listingId);
+    if (guestsBroughtBy(listing, userId) === 0) {
+      throw new Error("You don't have a guest seat here.");
+    }
+    if (listingIsPast(listing.dateTime, Date.now())) {
+      throw new Error("This formal has already happened.");
+    }
+    const newSeats = listing.seatsAvailable + 1;
+    await ctx.db.patch(args.listingId, {
+      guestSeats: withGuestSeats(listing.guestSeats, userId, -1),
+      seatsAvailable: newSeats,
+      ...(listing.status === "closed" || listing.status === "confirmed"
+        ? { status: "active" as const }
+        : {}),
+    });
+    await refundSeatHolderCredits(ctx, listing, userId, {
+      guestsOnly: true,
+      limit: 1,
+    });
     return args.listingId;
   },
 });
@@ -602,23 +1068,8 @@ export const removeMember = mutation({
       throw new Error("User is not a member of this group.");
     }
 
-    const newMembers = listing.members.filter((m) => m !== args.memberId);
-    const newSeats = listing.seatsAvailable + 1;
-    const nowMs = Date.now();
-    const reopened =
-      listing.status === "closed" &&
-      newSeats > 0 &&
-      !listingIsPast(listing.dateTime, nowMs);
-    await ctx.db.patch(args.listingId, {
-      members: newMembers,
-      seatsAvailable: newSeats,
-      ...(reopened ? { status: "active" as const } : {}),
-    });
-
-    const updated = await ctx.db.get(args.listingId);
-    if (updated) {
-      await syncListingAttendanceGuests(ctx, updated, Date.now());
-    }
+    const link = await swapSeatingMember(ctx, args.listingId, args.memberId);
+    await detachMember(ctx, args.listingId, args.memberId);
 
     const acceptedRequests = await ctx.db
       .query("requests")
@@ -631,6 +1082,24 @@ export const removeMember = mutation({
         await ctx.db.patch(req._id, { status: "declined" });
       }
     }
+
+    const notices: FormalNotice[] = [];
+    if (link) {
+      // Removing your swap partner undoes your half too.
+      await undoSwap(ctx, link, args.listingId);
+    }
+    if (!listingIsPast(listing.dateTime, Date.now())) {
+      const host = await ctx.db.get(userId);
+      notices.push({
+        userId: args.memberId,
+        subject: "You were removed from a formal",
+        body: `${host?.name?.split(" ")[0] ?? "The host"} removed you from their formal.${link ? " Your swap is off, so they lose their seat at yours too." : ""}`,
+        cta: "browse",
+        eyebrow: "Removed",
+        listingId: listing._id,
+      });
+    }
+    await sendFormalNotices(ctx, notices);
 
     return args.listingId;
   },
@@ -645,6 +1114,7 @@ export const updateListing = mutation({
     menu: v.optional(v.string()),
     menuPdfId: menuPdfIdOrClear,
     listingType: v.optional(listingTypeValidator),
+    formalType: v.optional(formalTypeValidator),
     price: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -667,6 +1137,10 @@ export const updateListing = mutation({
       );
     }
 
+    if (listingIsPast(listing.dateTime, Date.now())) {
+      throw new Error("Cannot edit a completed listing.");
+    }
+
     const patch: Partial<Doc<"listings">> = {};
 
     if (args.dateTime !== undefined) {
@@ -674,21 +1148,34 @@ export const updateListing = mutation({
       if (Number.isNaN(timestamp)) {
         throw new Error("Invalid listing date.");
       }
-      patch.dateTime = new Date(timestamp).toISOString();
+      const nextDateTime = new Date(timestamp).toISOString();
+      if (nextDateTime !== listing.dateTime) {
+        if (occupiedSeats(listing) > 1) {
+          throw new Error(
+            "You can't change the date once people have joined. Cancel the formal instead.",
+          );
+        }
+        patch.dateTime = nextDateTime;
+      }
     }
 
     if (args.groupSize !== undefined) {
-      if (args.groupSize < listing.members.length) {
+      const occupied = occupiedSeats(listing);
+      if (args.groupSize < occupied) {
         throw new Error(
-          "Group size cannot be less than the current number of members.",
+          "Group size cannot be less than the number of people already going.",
         );
       }
       patch.groupSize = args.groupSize;
-      patch.seatsAvailable = args.groupSize - listing.members.length;
+      patch.seatsAvailable = args.groupSize - occupied;
     }
 
     if (args.message !== undefined) {
       patch.message = args.message.trim();
+    }
+
+    if (args.formalType !== undefined) {
+      patch.formalType = args.formalType;
     }
 
     if (args.menu !== undefined) {
@@ -884,6 +1371,25 @@ export const deleteListing = mutation({
     }
 
     await declinePendingRequestsForListing(ctx, args.listingId);
+
+    // An upcoming formal with guests is cancelled: they're told, and any
+    // swaps tied to it are undone (the host loses the seats they got back).
+    if (!listingIsPast(listing.dateTime, Date.now()) && listing.members.length > 1) {
+      await undoSwapsForCancelledListing(ctx, listing);
+      for (const guestId of listing.members) {
+        if (guestId === userId) continue;
+        await notify(ctx, {
+          userId: guestId,
+          kind: "formal_cancelled",
+          actorId: userId,
+          listingId: listing._id,
+          data: { college: listing.college, dateTime: listing.dateTime },
+        });
+      }
+    }
+    if (!listingIsPast(listing.dateTime, Date.now())) {
+      await refundListingCredits(ctx, listing._id);
+    }
 
     await deleteMenuPdfIfPresent(ctx, listing.menuPdfId);
     await ctx.db.delete(args.listingId);

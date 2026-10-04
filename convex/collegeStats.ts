@@ -4,15 +4,15 @@ import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
-  applyAttendanceGuestDelta,
-  applyFormalCompleted,
+  applyReviewDelete,
   applyReviewInsert,
   applyReviewUpdate,
   averagesFromSums,
   EMPTY_COLLEGE_STATS,
   EMPTY_RATING_SUMS,
 } from "../lib/data/collegeStats";
-import { guestCountForListing } from "../lib/data/collegeAttendance";
+import { computeAttendanceByCollegeFromConfirmations } from "../lib/data/collegeAttendance";
+import { rowCountsAsAttended } from "../lib/data/formalAttendance";
 import { listingIsPast } from "./listingHelpers";
 import { normalizeCollegeName, OXFORD_COLLEGES } from "../lib/data/colleges";
 import type { ReviewRatings } from "./collegeReviewHelpers";
@@ -68,6 +68,25 @@ export async function recordReviewInsert(
   await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
 }
 
+export async function recordReviewDelete(
+  ctx: MutationCtx,
+  college: string,
+  ratings: ReviewRatings,
+  nowMs: number,
+): Promise<void> {
+  const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
+  const next = applyReviewDelete(
+    {
+      reviewCount: doc.reviewCount,
+      ratingSums: doc.ratingSums,
+      attendanceCount: doc.attendanceCount,
+      completedFormalCount: doc.completedFormalCount,
+    },
+    ratings,
+  );
+  await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
+}
+
 export async function recordReviewUpdate(
   ctx: MutationCtx,
   college: string,
@@ -89,73 +108,34 @@ export async function recordReviewUpdate(
   await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
 }
 
-function guestCountForDoc(listing: Doc<"listings">): number {
-  return guestCountForListing({
-    college: listing.college,
-    dateTime: listing.dateTime,
-    ownerUserId: listing.ownerUserId,
-    members: listing.members.map(String),
-  });
-}
-
 export async function applyCompletedFormalForListing(
   ctx: MutationCtx,
   listingId: Id<"listings">,
   nowMs: number,
-): Promise<void> {
+): Promise<boolean> {
   const listing = await ctx.db.get(listingId);
-  if (!listing) return;
-  if (listing.attendanceAppliedAt !== undefined) return;
-  if (!listingIsPast(listing.dateTime, nowMs)) return;
+  if (!listing) return false;
+  if (listing.attendanceAppliedAt !== undefined) return false;
+  if (!listingIsPast(listing.dateTime, nowMs)) return false;
 
-  const college = normalizeCollegeName(listing.college);
-  if (!college) return;
-
-  const guests = guestCountForDoc(listing);
-  const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
-  const next = applyFormalCompleted(
-    {
-      reviewCount: doc.reviewCount,
-      ratingSums: doc.ratingSums,
-      attendanceCount: doc.attendanceCount,
-      completedFormalCount: doc.completedFormalCount,
-    },
-    guests,
-  );
-  await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
   await ctx.db.patch(listingId, {
     attendanceAppliedAt: nowMs,
-    attendanceGuestCount: guests,
   });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.emails.notifyReviewReminderForListing,
+    { listingId },
+  );
+  return true;
 }
 
+/** Member changes no longer affect rankings; confirmations are explicit. */
 export async function syncListingAttendanceGuests(
-  ctx: MutationCtx,
-  listing: Doc<"listings">,
-  nowMs: number,
+  _ctx: MutationCtx,
+  _listing: Doc<"listings">,
+  _nowMs: number,
 ): Promise<void> {
-  if (listing.attendanceAppliedAt === undefined) return;
-
-  const college = normalizeCollegeName(listing.college);
-  if (!college) return;
-
-  const newGuests = guestCountForDoc(listing);
-  const prevGuests = listing.attendanceGuestCount ?? 0;
-  const delta = newGuests - prevGuests;
-  if (delta === 0) return;
-
-  const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
-  const next = applyAttendanceGuestDelta(
-    {
-      reviewCount: doc.reviewCount,
-      ratingSums: doc.ratingSums,
-      attendanceCount: doc.attendanceCount,
-      completedFormalCount: doc.completedFormalCount,
-    },
-    delta,
-  );
-  await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
-  await ctx.db.patch(listing._id, { attendanceGuestCount: newGuests });
+  return;
 }
 
 export async function scheduleFormalCompletion(
@@ -246,7 +226,13 @@ export const backfill = internalMutation({
   args: {
     reviewCursor: v.optional(v.string()),
     listingCursor: v.optional(v.string()),
-    phase: v.optional(v.union(v.literal("reviews"), v.literal("listings"))),
+    phase: v.optional(
+      v.union(
+        v.literal("reviews"),
+        v.literal("confirmations"),
+        v.literal("markFormalsEnded"),
+      ),
+    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -299,47 +285,126 @@ export const backfill = internalMutation({
       }
 
       await ctx.scheduler.runAfter(0, internal.collegeStats.backfill, {
-        phase: "listings",
+        phase: "confirmations",
       });
       return null;
     }
 
-    const listingBatch = await ctx.db
-      .query("listings")
-      .paginate({ numItems: BACKFILL_LISTING_BATCH, cursor: args.listingCursor ?? null });
+    if (phase === "confirmations") {
+      const rows = await ctx.db.query("formalAttendanceConfirmations").collect();
+      const listingCache = new Map<Id<"listings">, Doc<"listings"> | null>();
+      const confirmationRows: {
+        listingId: string;
+        college: string;
+        dateTime: string;
+        attended?: boolean;
+      }[] = [];
 
-    for (const listing of listingBatch.page) {
-      if (!listingIsPast(listing.dateTime, nowMs)) continue;
-      if (listing.attendanceAppliedAt !== undefined) continue;
+      for (const row of rows) {
+        let listing = listingCache.get(row.listingId);
+        if (listing === undefined) {
+          listing = await ctx.db.get(row.listingId);
+          listingCache.set(row.listingId, listing);
+        }
+        if (!listing) continue;
+        if (!rowCountsAsAttended(row)) continue;
+        confirmationRows.push({
+          listingId: row.listingId,
+          college: listing.college,
+          dateTime: listing.dateTime,
+          attended: true,
+        });
+      }
 
-      const college = normalizeCollegeName(listing.college);
-      if (!college) continue;
-
-      const guests = guestCountForDoc(listing);
-      const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
-      const next = applyFormalCompleted(
-        {
-          reviewCount: doc.reviewCount,
-          ratingSums: doc.ratingSums,
-          attendanceCount: doc.attendanceCount,
-          completedFormalCount: doc.completedFormalCount,
-        },
-        guests,
+      const deltaByCollege = computeAttendanceByCollegeFromConfirmations(
+        confirmationRows,
+        nowMs,
       );
-      await ctx.db.patch(doc._id, { ...next, updatedAt: nowMs });
-      await ctx.db.patch(listing._id, {
-        attendanceAppliedAt: nowMs,
-        attendanceGuestCount: guests,
-      });
-    }
 
-    if (!listingBatch.isDone) {
+      for (const [college, delta] of deltaByCollege) {
+        const doc = await getOrCreateCollegeStatsDoc(ctx, college, nowMs);
+        await ctx.db.patch(doc._id, {
+          attendanceCount: doc.attendanceCount + delta.attendanceCount,
+          completedFormalCount:
+            doc.completedFormalCount + delta.completedFormalCount,
+          updatedAt: nowMs,
+        });
+      }
+
       await ctx.scheduler.runAfter(0, internal.collegeStats.backfill, {
-        listingCursor: listingBatch.continueCursor,
-        phase: "listings",
+        phase: "markFormalsEnded",
+      });
+      return null;
+    }
+
+    if (phase === "markFormalsEnded") {
+      const listingBatch = await ctx.db
+        .query("listings")
+        .paginate({
+          numItems: BACKFILL_LISTING_BATCH,
+          cursor: args.listingCursor ?? null,
+        });
+
+      for (const listing of listingBatch.page) {
+        if (!listingIsPast(listing.dateTime, nowMs)) continue;
+        if (listing.attendanceAppliedAt !== undefined) continue;
+        await ctx.db.patch(listing._id, { attendanceAppliedAt: nowMs });
+      }
+
+      if (!listingBatch.isDone) {
+        await ctx.scheduler.runAfter(0, internal.collegeStats.backfill, {
+          listingCursor: listingBatch.continueCursor,
+          phase: "markFormalsEnded",
+        });
+      }
+    }
+
+    return null;
+  },
+});
+
+const BACKFILL_CONFIRMATION_BATCH = 100;
+
+export const backfillAttendanceConfirmationsFromReviews = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("collegeReviews")
+      .paginate({
+        numItems: BACKFILL_CONFIRMATION_BATCH,
+        cursor: args.cursor ?? null,
+      });
+
+    for (const review of batch.page) {
+      const existing = await ctx.db
+        .query("formalAttendanceConfirmations")
+        .withIndex("by_listingId_and_userId", (q) =>
+          q.eq("listingId", review.listingId).eq("userId", review.userId),
+        )
+        .unique();
+      if (existing) continue;
+
+      await ctx.db.insert("formalAttendanceConfirmations", {
+        listingId: review.listingId,
+        userId: review.userId,
+        confirmedAt: review.updatedAt,
+        attended: true,
       });
     }
 
+    if (!batch.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.collegeStats.backfillAttendanceConfirmationsFromReviews,
+        { cursor: batch.continueCursor },
+      );
+      return null;
+    }
+
+    await ctx.scheduler.runAfter(0, internal.collegeStats.backfill, {});
     return null;
   },
 });

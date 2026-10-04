@@ -15,3 +15,10 @@ Convex agent skills for common tasks can be installed by running
 `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+## The backend is a mirror
+
+`convex/` and the `lib/` files it imports are copied from the website repo by
+`npm run sync:backend`. Do not edit them here and never run `npx convex dev` or
+`npx convex deploy` in this repo: backend changes are made and deployed in
+`oxformals`, then synced.

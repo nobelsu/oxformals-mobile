@@ -2,7 +2,7 @@ import { OxButton } from "@/src/components/ui/OxButton";
 import { OxText } from "@/src/components/ui/OxText";
 import { pickReviewImageFromLibrary } from "@/src/lib/upload/pickReviewImageFromLibrary";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
-import { uploadImageFileMobile } from "@/lib/upload/imageFile";
+import { uploadImageFileMobile } from "@/src/lib/upload/imageFileMobile";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Image } from "expo-image";
 import { useState } from "react";

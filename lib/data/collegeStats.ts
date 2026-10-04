@@ -66,6 +66,19 @@ export function applyReviewInsert(
   };
 }
 
+/** Inverse of `applyReviewInsert`, for a review that's been deleted. */
+export function applyReviewDelete(
+  stats: CollegeStatsSnapshot,
+  ratings: CollegeReviewRatings,
+): CollegeStatsSnapshot {
+  return {
+    reviewCount: Math.max(0, stats.reviewCount - 1),
+    ratingSums: subtractRatingSums(stats.ratingSums, ratings),
+    attendanceCount: stats.attendanceCount,
+    completedFormalCount: stats.completedFormalCount,
+  };
+}
+
 export function applyReviewUpdate(
   stats: CollegeStatsSnapshot,
   oldRatings: CollegeReviewRatings,

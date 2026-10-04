@@ -7,6 +7,7 @@ import {
   hasDeclinedAttendance,
   hasRespondedToAttendance,
 } from "./formalAttendance";
+import { awardNewBadges } from "./badges";
 import {
   deleteReviewImagesIfPresent,
   getConfirmAttendanceEligibility,
@@ -29,6 +30,7 @@ import {
   type CollegeReviewCategory,
 } from "../lib/data/collegeReviews";
 import { optionalUserId, requireActiveUser } from "./guards";
+import { canSeeActivity } from "./follows";
 
 const ratingsValidator = v.object({
   food: v.number(),
@@ -96,8 +98,10 @@ async function enrichReview(
 ) {
   const listing = await ctx.db.get(review.listingId);
   const authorUser = await ctx.db.get(review.userId);
+  // A private member's name only shows to their followers.
   const showAuthor =
-    !review.isAnonymous || (viewerId !== null && viewerId === review.userId);
+    (viewerId !== null && viewerId === review.userId) ||
+    (!review.isAnonymous && (await canSeeActivity(ctx, viewerId, authorUser)));
 
   let viewerVote: 1 | -1 | null = null;
   if (viewerId) {
@@ -295,6 +299,9 @@ export const submitReview = mutation({
       updatedAt: args.nowMs,
     });
     await recordReviewInsert(ctx, college, ratings, args.nowMs);
+    if (!args.isAnonymous) {
+      await awardNewBadges(ctx, userId, args.nowMs);
+    }
     return reviewId;
   },
 });
@@ -341,6 +348,9 @@ export const updateReview = mutation({
       newRatings,
       args.nowMs,
     );
+    if (!args.isAnonymous) {
+      await awardNewBadges(ctx, userId, args.nowMs);
+    }
     return null;
   },
 });
@@ -479,6 +489,45 @@ export const getLeaderboard = query({
   },
 });
 
+const galleryEntryValidator = v.object({
+  college: v.string(),
+  photoCount: v.number(),
+  reviewCount: v.number(),
+});
+
+/**
+ * Per-college summary that powers the Colleges directory: every college in
+ * canonical order with how many review photos and reviews it has. Kept to a
+ * single table scan with no per-image storage lookups since the list only
+ * needs counts, not the images themselves.
+ */
+export const getCollegeGallery = query({
+  args: {},
+  returns: v.array(galleryEntryValidator),
+  handler: async (ctx) => {
+    type Agg = { photoCount: number; reviewCount: number };
+    const byCollege = new Map<string, Agg>();
+
+    const rows = await ctx.db.query("collegeReviews").collect();
+    for (const row of rows) {
+      const college = normalizeCollegeName(row.college);
+      const agg = byCollege.get(college) ?? { photoCount: 0, reviewCount: 0 };
+      agg.reviewCount += 1;
+      agg.photoCount += (row.imageIds ?? []).length;
+      byCollege.set(college, agg);
+    }
+
+    return OXFORD_COLLEGES.map((college) => {
+      const agg = byCollege.get(normalizeCollegeName(college));
+      return {
+        college,
+        photoCount: agg?.photoCount ?? 0,
+        reviewCount: agg?.reviewCount ?? 0,
+      };
+    });
+  },
+});
+
 export const listPublicReviewsForUser = query({
   args: {
     userId: v.id("users"),
@@ -488,11 +537,14 @@ export const listPublicReviewsForUser = query({
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
     const viewerId = await optionalUserId(ctx);
+    // A private member's reviews are activity: followers only.
+    const author = await ctx.db.get(args.userId);
+    if (!(await canSeeActivity(ctx, viewerId, author))) return [];
 
     const rows = await ctx.db
       .query("collegeReviews")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(500);
 
     const publicRows = rows.filter((r) => !r.isAnonymous);
     const sorted = sortCollegeReviewRows(publicRows, "recent").slice(0, limit);
