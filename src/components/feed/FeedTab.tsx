@@ -2,6 +2,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { FeedCard } from "@/src/components/feed/FeedCard";
 import { FeedCommentsSheet } from "@/src/components/feed/FeedCommentsSheet";
+import { PartyInvites } from "@/src/components/feed/PartyInvites";
 import type { FeedItem, FeedScope } from "@/src/components/feed/types";
 import { YourFormalsCard } from "@/src/components/feed/YourFormalsCard";
 import { Chip } from "@/src/components/ui/Chip";
@@ -62,6 +63,7 @@ export function FeedTab() {
             >
               oxformals
             </OxText>
+            <PartyInvites />
             <YourFormalsCard />
             <View style={styles.scopes}>
               {SCOPES.map((s) => (

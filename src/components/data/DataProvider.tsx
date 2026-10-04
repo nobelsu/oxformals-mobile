@@ -30,6 +30,8 @@ function reportFailure(title: string) {
 
 export type DataContextValue = {
   ready: boolean;
+  /** The listings query has answered at least once. */
+  listingsLoaded: boolean;
   users: User[];
   listings: Listing[];
   requests: SwapRequest[];
@@ -428,6 +430,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DataContextValue>(
     () => ({
       ready,
+      listingsLoaded: ready && convexListings !== undefined,
       users,
       listings,
       requests,
@@ -448,6 +451,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [
       ready,
+      convexListings,
       users,
       listings,
       requests,

@@ -1,4 +1,5 @@
 import { useAuth } from "@/src/components/auth/useAuth";
+import { CreditsCard } from "@/src/components/profile/CreditsCard";
 import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
@@ -49,6 +50,10 @@ export function MyProfileView({ onEditPress, onSettingsPress }: Props) {
           style={styles.actionButton}
         />
       </View>
+
+      <View style={styles.credits}>
+        <CreditsCard />
+      </View>
     </>
   );
 }
@@ -59,6 +64,7 @@ const styles = StyleSheet.create({
     gap: space[3],
     marginTop: space[5],
   },
+  credits: { marginTop: space[5] },
   actionButton: {
     flex: 1,
   },

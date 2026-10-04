@@ -19,7 +19,10 @@ import type { RequestDirection } from "@/src/components/swap/history/constants";
 import { useMutation } from "convex/react";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { errorMessage } from "@/src/lib/errorMessage";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useData } from "@/src/components/data/useData";
+import { partyWaitingReason, RequestPartyNote } from "./RequestPartyNote";
 import { RequestRowFormals } from "./RequestRowFormals";
 import { RequestTypeTag } from "./RequestTypeTag";
 
@@ -56,6 +59,7 @@ export function IncomingRequestRow({
 }: Props) {
   const router = useRouter();
   const { colors } = useOxTheme();
+  const { getUser } = useData();
   const [messaging, setMessaging] = useState(false);
   const getOrCreateConversation = useMutation(api.chat.getOrCreateConversation);
 
@@ -67,6 +71,8 @@ export function IncomingRequestRow({
     offeringListing,
   });
   const formalsA11y = formatRequestRowAccessibilityLabel(formalSlots);
+  // A group request can't be accepted until everyone in it is ready.
+  const waiting = partyWaitingReason(request, (id) => getUser(id)?.name);
 
   const openMessage = useCallback(async () => {
     setMessaging(true);
@@ -75,6 +81,8 @@ export function IncomingRequestRow({
         otherUserId: fromUser.id as Id<"users">,
       });
       router.push(chatConversationHref(conversationId));
+    } catch (error) {
+      Alert.alert("Couldn't open this chat", errorMessage(error));
     } finally {
       setMessaging(false);
     }
@@ -115,6 +123,7 @@ export function IncomingRequestRow({
           </View>
         </View>
         <RequestRowFormals slots={formalSlots} />
+        <RequestPartyNote request={request} price={targetListing?.price} />
         <Text style={[oxText, styles.timestamp, { color: colors.inkSoft }]}>
           Received {formatRelativeTime(request.createdAt)}
         </Text>
@@ -130,6 +139,7 @@ export function IncomingRequestRow({
         {request.status === "pending" && onAccept ? (
           <OxButton
             title="Accept"
+            disabled={waiting !== null}
             onPress={() => onAccept(request.id)}
             style={styles.actionBtn}
           />

@@ -3,12 +3,20 @@ import { useData } from "@/src/components/data/useData";
 import { ListingReviewHeaderIndicators } from "@/src/components/reviews/ListingReviewHeaderIndicators";
 import { ReviewFormalSection } from "@/src/components/reviews/ReviewFormalSection";
 import { ListingDetailContent } from "@/src/components/swap/ListingDetailContent";
-import { isGuestForCollegeListing } from "@/lib/data/collegeReviewEligibility";
+import {
+  isGuestForCollegeListing,
+  listingIsPast,
+} from "@/lib/data/collegeReviewEligibility";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useNowMs } from "@/src/lib/hooks/useNowMs";
 import { useQuery } from "convex/react";
+import { ListingMembership } from "@/src/components/swap/ListingMembership";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
+import {
+  partyWaitingReason,
+  RequestPartyNote,
+} from "@/src/components/swap/RequestPartyNote";
 import { OxBackButton } from "@/src/components/ui/OxBackButton";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
@@ -35,6 +43,7 @@ export default function ListingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
   const {
+    listingsLoaded,
     listings,
     requests,
     getUser,
@@ -85,6 +94,17 @@ export default function ListingDetailScreen() {
     : [];
 
   if (!listing || !owner) {
+    // Loaded but absent: cancelled, or hidden because of a block.
+    if (listingsLoaded && !listing) {
+      return (
+        <View style={[styles.root, styles.gone, { backgroundColor: colors.bg }]}>
+          <OxText style={{ color: colors.ink, fontSize: 20, textAlign: "center" }}>
+            This formal is no longer available.
+          </OxText>
+          <OxButton title="Back" variant="secondary" onPress={() => router.back()} />
+        </View>
+      );
+    }
     return (
       <View style={[styles.root, { backgroundColor: colors.bg }]}>
         <OxLoadingView message="Loading listing…" fill />
@@ -188,6 +208,7 @@ export default function ListingDetailScreen() {
                   <OxText style={{ color: colors.ink }}>
                     {from?.name ?? "User"} · {r.status}
                   </OxText>
+                  <RequestPartyNote request={r} price={listing.price} />
                   {r.message ? (
                     <OxText style={{ color: colors.inkMuted, marginTop: 4 }}>
                       {r.message}
@@ -197,6 +218,9 @@ export default function ListingDetailScreen() {
                     <View style={styles.actions}>
                       <OxButton
                         title="Accept"
+                        disabled={
+                          partyWaitingReason(r, (id) => getUser(id)?.name) !== null
+                        }
                         onPress={() => acceptRequest(r.id)}
                       />
                       <OxButton
@@ -229,13 +253,21 @@ export default function ListingDetailScreen() {
               </OxText>
             ) : null}
             <OxButton
-              title="Delete listing"
+              title="Cancel formal"
               variant="danger"
               onPress={confirmDeleteListing}
               style={{ marginTop: 16 }}
             />
           </View>
         )}
+
+        {user ? (
+          <ListingMembership
+            listing={listing}
+            viewerId={user.id}
+            isPast={listingIsPast(listing.dateTime, nowMs)}
+          />
+        ) : null}
 
         {canRequest && (
           <OxButton
@@ -252,6 +284,7 @@ export default function ListingDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  gone: { alignItems: "center", justifyContent: "center", gap: 16, padding: 24 },
   content: { padding: SCREEN_PADDING, paddingBottom: 40 },
   backRow: { marginBottom: SECTION_GAP },
   section: { marginTop: 24 },

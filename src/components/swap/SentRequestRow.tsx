@@ -20,6 +20,7 @@ import { useMutation } from "convex/react";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { RequestPartyNote } from "./RequestPartyNote";
 import { RequestRowFormals } from "./RequestRowFormals";
 import { RequestTypeTag } from "./RequestTypeTag";
 
@@ -113,6 +114,7 @@ export function SentRequestRow({
           </View>
         </View>
         <RequestRowFormals slots={formalSlots} />
+        <RequestPartyNote request={request} price={targetListing?.price} />
         <Text style={[oxText, styles.timestamp, { color: colors.inkSoft }]}>
           Sent {formatRelativeTime(request.createdAt)}
         </Text>
