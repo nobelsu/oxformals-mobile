@@ -115,7 +115,7 @@ export default function LoginScreen() {
   if (status === "ready" && isAuthenticated) {
     return (
       <Redirect
-        href={needsRulesAgreement ? "/house-rules" : "/(tabs)/browse"}
+        href={needsRulesAgreement ? "/house-rules" : "/(tabs)/feed"}
       />
     );
   }

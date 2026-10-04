@@ -81,6 +81,10 @@ function RootStack() {
         options={{ headerShown: true, title: "Edit listing" }}
       />
       <Stack.Screen
+        name="your-formals"
+        options={{ headerShown: true, title: "Your formals" }}
+      />
+      <Stack.Screen
         name="history/past-listings"
         options={{ headerShown: true }}
       />

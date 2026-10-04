@@ -23,7 +23,12 @@ import { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export function HistoryTab() {
+type Props = {
+  /** Shown as a pushed screen under a stack header instead of as a tab. */
+  inStack?: boolean;
+};
+
+export function HistoryTab({ inStack }: Props = {}) {
   const router = useRouter();
   const { colors } = useOxTheme();
   const { user } = useAuth();
@@ -53,11 +58,12 @@ export function HistoryTab() {
   return (
     <SafeAreaView
       style={[styles.root, { backgroundColor: colors.bg }]}
-      edges={TAB_SCREEN_EDGES}
+      edges={inStack ? ["left", "right"] : TAB_SCREEN_EDGES}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
+          inStack && styles.scrollInStack,
           isEmpty && styles.scrollEmpty,
         ]}
         keyboardShouldPersistTaps="handled"
@@ -100,6 +106,7 @@ const styles = StyleSheet.create({
     paddingTop: TAB_SCREEN_TITLE_PADDING_TOP,
     paddingBottom: TAB_SCROLL_EXTRA_BOTTOM + 32,
   },
+  scrollInStack: { paddingTop: SCREEN_PADDING },
   scrollEmpty: {
     flexGrow: 1,
     justifyContent: "center",

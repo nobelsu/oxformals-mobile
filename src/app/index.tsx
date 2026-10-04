@@ -30,5 +30,5 @@ export default function Index() {
     return <Redirect href="/house-rules" />;
   }
 
-  return <Redirect href="/(tabs)/browse" />;
+  return <Redirect href="/(tabs)/feed" />;
 }

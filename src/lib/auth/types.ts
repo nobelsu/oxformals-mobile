@@ -13,6 +13,8 @@ export type User = {
   /** e.g. Undergraduate, Postgraduate — shown on listings when you post. */
   role: string;
   interests: string[];
+  /** Short profile line (replaces interest tags on the website). */
+  bio?: string;
   instagramHandle?: string;
   whatsappPhone?: string;
   dietaryRequirements?: string;

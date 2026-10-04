@@ -89,13 +89,13 @@ function TabsNavigator() {
         }}
       >
         <Tabs.Screen
-          name="browse"
+          name="feed"
           options={{
-            title: "Browse",
-            tabBarAccessibilityLabel: "Browse",
+            title: "Feed",
+            tabBarAccessibilityLabel: "Feed",
             tabBarIcon: ({ color, size, focused }) => (
               <TabBarIcon
-                variant="browse"
+                variant="feed"
                 focused={focused}
                 color={color}
                 size={size}
@@ -104,13 +104,13 @@ function TabsNavigator() {
           }}
         />
         <Tabs.Screen
-          name="listings"
+          name="browse"
           options={{
-            title: "History",
-            tabBarAccessibilityLabel: "History",
+            title: "Browse",
+            tabBarAccessibilityLabel: "Browse",
             tabBarIcon: ({ color, size, focused }) => (
               <TabBarIcon
-                variant="history"
+                variant="browse"
                 focused={focused}
                 color={color}
                 size={size}

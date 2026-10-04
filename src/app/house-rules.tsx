@@ -20,7 +20,7 @@ export default function HouseRulesScreen() {
   }
 
   if (status === "ready" && isAuthenticated && !needsRulesAgreement) {
-    return <Redirect href="/(tabs)/browse" />;
+    return <Redirect href="/(tabs)/feed" />;
   }
 
   if (status !== "ready") {
@@ -45,7 +45,7 @@ export default function HouseRulesScreen() {
             setAgreeing(true);
             await agreeToRules();
             setAgreeing(false);
-            router.replace("/(tabs)/browse");
+            router.replace("/(tabs)/feed");
           }}
         />
       }
