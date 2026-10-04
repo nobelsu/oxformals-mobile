@@ -35,7 +35,9 @@ import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { OxText } from "@/src/components/ui/OxText";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { WEB_ORIGIN } from "@/src/lib/webOrigin";
+import { Ionicons } from "@expo/vector-icons";
+import { Alert, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ListingDetailScreen() {
@@ -152,6 +154,19 @@ export default function ListingDetailScreen() {
     );
   }
 
+  function shareListing() {
+    if (!listing) return;
+    const day = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(new Date(listing.dateTime));
+    Share.share({
+      message: `Formal at ${listing.college} on ${day}. Want to come?\n${WEB_ORIGIN}/?listing=${listing.id}`,
+    }).catch(() => {});
+  }
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -164,6 +179,15 @@ export default function ListingDetailScreen() {
       >
         <View style={styles.backRow}>
           <OxBackButton />
+          <Pressable
+            onPress={shareListing}
+            hitSlop={10}
+            style={styles.share}
+            accessibilityRole="button"
+            accessibilityLabel="Share this formal"
+          >
+            <Ionicons name="share-outline" size={24} color={colors.ink} />
+          </Pressable>
         </View>
         <ListingDetailContent
           listing={listing}
@@ -304,10 +328,16 @@ export default function ListingDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  share: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   report: { alignSelf: "center", marginTop: 24, minHeight: 32, justifyContent: "center" },
   gone: { alignItems: "center", justifyContent: "center", gap: 16, padding: 24 },
   content: { padding: SCREEN_PADDING, paddingBottom: 40 },
-  backRow: { marginBottom: SECTION_GAP },
+  backRow: {
+    marginBottom: SECTION_GAP,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   section: { marginTop: 24 },
   heading: {
     fontSize: DISPLAY_SECTION,

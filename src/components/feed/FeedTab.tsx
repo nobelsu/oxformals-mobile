@@ -3,6 +3,7 @@ import { useAuth } from "@/src/components/auth/useAuth";
 import { FeedCard } from "@/src/components/feed/FeedCard";
 import { FeedCommentsSheet } from "@/src/components/feed/FeedCommentsSheet";
 import { PartyInvites } from "@/src/components/feed/PartyInvites";
+import { PeopleYouMayKnow } from "@/src/components/feed/PeopleYouMayKnow";
 import type { FeedItem, FeedScope } from "@/src/components/feed/types";
 import { YourFormalsCard } from "@/src/components/feed/YourFormalsCard";
 import { Chip } from "@/src/components/ui/Chip";
@@ -104,6 +105,7 @@ export function FeedTab() {
                 />
               ))}
             </View>
+            {scope === "following" ? <PeopleYouMayKnow /> : null}
           </View>
         }
         ListEmptyComponent={
