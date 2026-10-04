@@ -43,7 +43,14 @@ export type DataContextValue = {
     offeringListingId?: string;
     message: string;
     targetOwnerUserId?: string;
-  }) => Promise<SwapRequest | null>;
+    /** Unnamed "+N" guests you cover, and how each seat is paid. */
+    guests?: number;
+    guestMethods?: RequestType[];
+    /** Mutual follows coming with you. */
+    friends?: { userId: string; paysOwn: boolean; method: RequestType }[];
+    /** Seats for people not on Oxformals yet; each gets a link to claim. */
+    links?: { paysOwn: boolean; method: RequestType }[];
+  }) => Promise<(SwapRequest & { links?: string[] }) | null>;
   requestSwap: (args: {
     targetListingId: string;
     offeringListingId: string;
@@ -225,7 +232,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       offeringListingId?: string;
       message: string;
       targetOwnerUserId?: string;
-    }): Promise<SwapRequest | null> => {
+      guests?: number;
+      guestMethods?: RequestType[];
+      friends?: { userId: string; paysOwn: boolean; method: RequestType }[];
+      links?: { paysOwn: boolean; method: RequestType }[];
+    }): Promise<(SwapRequest & { links?: string[] }) | null> => {
       if (!user) return null;
       const targetFromCache = listings.find((l) => l.id === args.targetListingId);
       const toUserId = targetFromCache?.ownerUserId ?? args.targetOwnerUserId;
@@ -239,6 +250,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ? { offeringListingId: args.offeringListingId as Id<"listings"> }
             : {}),
           message: args.message,
+          ...(args.guests ? { guests: args.guests } : {}),
+          ...(args.guestMethods ? { guestMethods: args.guestMethods } : {}),
+          ...(args.friends
+            ? {
+                friends: args.friends.map((f) => ({
+                  ...f,
+                  userId: f.userId as Id<"users">,
+                })),
+              }
+            : {}),
+          ...(args.links ? { links: args.links } : {}),
         });
       } catch (err) {
         throw new Error(errorMessage(err, "Could not send request."));
@@ -268,6 +290,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         message: args.message,
         status: result.autoAccepted ? "accepted" : "pending",
         createdAt: Date.now(),
+        ...(result.links && result.links.length > 0 ? { links: result.links } : {}),
       };
     },
     [

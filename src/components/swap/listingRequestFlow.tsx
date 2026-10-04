@@ -1,16 +1,12 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { useData } from "@/src/components/data/useData";
-import { OxButton } from "@/src/components/ui/OxButton";
-import { OxModal } from "@/src/components/ui/OxModal";
-import { useOxTheme } from "@/src/contexts/ThemeContext";
+import { JoinRequestSheet } from "@/src/components/swap/JoinRequestSheet";
 import { findBlockingOutgoingRequestForTarget } from "@/src/lib/data/requestFilters";
 import { listingSupportsSwap } from "@/src/lib/data/listingType";
-import type { Listing, RequestType } from "@/src/lib/data/types";
+import type { Listing } from "@/src/lib/data/types";
+import { WEB_ORIGIN } from "@/src/lib/webOrigin";
 import { useMemo, useState } from "react";
-import { Alert, Text } from "react-native";
-import { RequestPayModal } from "./RequestPayModal";
-import { RequestSwapModal } from "./RequestSwapModal";
-import { RequestTypeChooserModal } from "./RequestTypeChooserModal";
+import { Alert, Share } from "react-native";
 
 type Options = {
   onSignInRequired: () => void;
@@ -32,25 +28,32 @@ function alertBlockingRequest(
   }
   Alert.alert(
     "Request already sent",
-    "You already have a request waiting on this listing. Withdraw it on the Listings tab before sending another.",
+    "You already have a request waiting on this listing. Withdraw it under Your formals before sending another.",
   );
 }
 
+/** Hand the "claim your seat" links to the system share sheet, one at a time. */
+async function shareSeatLinks(tokens: string[]) {
+  for (const token of tokens) {
+    try {
+      await Share.share({
+        message: `A seat for you on Oxformals\n${WEB_ORIGIN}/s/${token}`,
+      });
+    } catch {
+      // Dismissing the share sheet is fine; the link stays on the request.
+    }
+  }
+}
+
+/** The request button's behaviour for any listing: one sheet for every way to pay. */
 export function useListingRequest({
   onSignInRequired,
   onListFormalRequired,
   onNavigateToRequests,
 }: Options) {
-  const { colors } = useOxTheme();
   const { user, isAuthenticated } = useAuth();
-  const { listings, requests, sendRequest } = useData();
-
-  const [requestTarget, setRequestTarget] = useState<Listing | null>(null);
-  const [pendingRequestType, setPendingRequestType] = useState<RequestType | null>(
-    null,
-  );
-  const [typeChooserTarget, setTypeChooserTarget] = useState<Listing | null>(null);
-  const [showNoListingPrompt, setShowNoListingPrompt] = useState(false);
+  const { listings, requests } = useData();
+  const [target, setTarget] = useState<Listing | null>(null);
 
   const myActiveListings = useMemo(
     () =>
@@ -59,124 +62,54 @@ export function useListingRequest({
             (l) =>
               l.ownerUserId === user.id &&
               l.status === "active" &&
-              listingSupportsSwap(l.listingType),
+              listingSupportsSwap(l.listingType) &&
+              l.id !== target?.id,
           )
         : [],
-    [listings, user],
+    [listings, user, target?.id],
   );
-
-  function openRequestFlow(listing: Listing, requestType: RequestType) {
-    if (!isAuthenticated) {
-      onSignInRequired();
-      return;
-    }
-    if (user) {
-      const blocking = findBlockingOutgoingRequestForTarget(
-        requests,
-        user.id,
-        listing.id,
-      );
-      if (blocking) {
-        alertBlockingRequest(blocking.status);
-        return;
-      }
-    }
-    if (requestType === "swap" && myActiveListings.length === 0) {
-      setShowNoListingPrompt(true);
-      return;
-    }
-    setPendingRequestType(requestType);
-    setRequestTarget(listing);
-  }
 
   function onCardRequest(listing: Listing) {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       onSignInRequired();
       return;
     }
-    if (listing.listingType === "both") {
-      setTypeChooserTarget(listing);
+    const blocking = findBlockingOutgoingRequestForTarget(requests, user.id, listing.id);
+    if (blocking) {
+      alertBlockingRequest(blocking.status);
       return;
     }
-    openRequestFlow(listing, listing.listingType === "pay" ? "pay" : "swap");
+    setTarget(listing);
   }
 
-  const modals = (
-    <>
-      <RequestTypeChooserModal
-        visible={!!typeChooserTarget}
-        listing={typeChooserTarget}
-        onClose={() => setTypeChooserTarget(null)}
-        onChoose={(type) => {
-          const l = typeChooserTarget;
-          setTypeChooserTarget(null);
-          if (l) openRequestFlow(l, type);
-        }}
-      />
+  const modals = target ? (
+    <JoinRequestSheet
+      key={target.id}
+      target={target}
+      myListings={myActiveListings}
+      onClose={() => setTarget(null)}
+      onListFormal={() => {
+        setTarget(null);
+        if (onListFormalRequired) onListFormalRequired();
+        else onNavigateToRequests?.();
+      }}
+      onSent={({ accepted, links }) => {
+        const college = target.college;
+        setTarget(null);
+        if (links.length > 0) {
+          Alert.alert(
+            "Request sent",
+            links.length === 1
+              ? "Send your guest their link so they can claim the seat. The host can accept once they've joined."
+              : `Send each of your ${links.length} guests their link so they can claim a seat. The host can accept once they've joined.`,
+            [{ text: "Share links", onPress: () => void shareSeatLinks(links) }],
+          );
+        } else if (accepted) {
+          Alert.alert("You're in!", `Your seat at ${college} is confirmed.`);
+        }
+      }}
+    />
+  ) : null;
 
-      <RequestSwapModal
-        visible={!!requestTarget && pendingRequestType === "swap"}
-        target={requestTarget}
-        myListings={myActiveListings}
-        onClose={() => {
-          setRequestTarget(null);
-          setPendingRequestType(null);
-        }}
-        onSend={async (offeringId, message) => {
-          if (!requestTarget) return;
-          await sendRequest({
-            requestType: "swap",
-            targetListingId: requestTarget.id,
-            offeringListingId: offeringId,
-            message,
-          });
-          setRequestTarget(null);
-          setPendingRequestType(null);
-        }}
-      />
-
-      <RequestPayModal
-        visible={!!requestTarget && pendingRequestType === "pay"}
-        target={requestTarget}
-        onClose={() => {
-          setRequestTarget(null);
-          setPendingRequestType(null);
-        }}
-        onSend={async (message) => {
-          if (!requestTarget) return;
-          await sendRequest({
-            requestType: "pay",
-            targetListingId: requestTarget.id,
-            message,
-          });
-          setRequestTarget(null);
-          setPendingRequestType(null);
-        }}
-      />
-
-      <OxModal
-        visible={showNoListingPrompt}
-        onClose={() => setShowNoListingPrompt(false)}
-        title="List a formal first"
-        scrollable={false}
-      >
-        <Text style={{ color: colors.inkMuted, marginBottom: 16 }}>
-          To request a swap, list your own formal first.
-        </Text>
-        <OxButton
-          title="List a formal"
-          onPress={() => {
-            setShowNoListingPrompt(false);
-            if (onListFormalRequired) {
-              onListFormalRequired();
-            } else {
-              onNavigateToRequests?.();
-            }
-          }}
-        />
-      </OxModal>
-    </>
-  );
-
-  return { onCardRequest, openRequestFlow, modals };
+  return { onCardRequest, modals };
 }
