@@ -4,10 +4,9 @@ export function listingSupportsSwap(listingType: ListingType): boolean {
   return listingType === "swap" || listingType === "both";
 }
 
-export function listingRequestCta(listingType: ListingType): string {
-  if (listingType === "pay") return "Request to join!";
-  if (listingType === "both") return "Send request!";
-  return "Request swap!";
+/** Every listing takes credits, so the button never promises one method. */
+export function listingRequestCta(_listingType: ListingType): string {
+  return "Request a seat!";
 }
 
 export function listingAllowsRequest(

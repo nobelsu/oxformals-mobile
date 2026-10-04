@@ -19,7 +19,7 @@ export const INTRO_SLIDES: readonly IntroSlide[] = [
   },
   {
     title: "Swap & Chat",
-    body: "Request swaps or pay to join — then chat with your group.",
+    body: "Swap a seat, spend a credit or pay to join, then chat with your group.",
     illustration: "chat",
   },
 ];
