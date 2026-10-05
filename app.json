@@ -17,7 +17,11 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Oxformals needs access to your photos so you can choose a profile picture or menu image.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": [
+        "applinks:oxformals.com",
+        "applinks:www.oxformals.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {

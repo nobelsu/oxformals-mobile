@@ -319,12 +319,26 @@ export function BrowseTab({ onSignInRequired }: Props) {
           marginBottom={12}
           accessibilityHidden={headerCollapsed}
         >
-          <Text
-            style={[tabScreenTitleText, { color: colors.ink }]}
-            accessibilityRole="header"
-          >
-            Discover
-          </Text>
+          <View style={styles.titleRow}>
+            <Text
+              style={[tabScreenTitleText, { color: colors.ink }]}
+              accessibilityRole="header"
+            >
+              Discover
+            </Text>
+            <Pressable
+              onPress={() => router.push("/colleges")}
+              hitSlop={10}
+              style={styles.collegesLink}
+              accessibilityRole="button"
+              accessibilityLabel="Colleges"
+            >
+              <Ionicons name="school-outline" size={18} color={colors.ink} />
+              <Text style={[styles.collegesLinkText, { color: colors.ink }]}>
+                Colleges
+              </Text>
+            </Pressable>
+          </View>
         </CollapsibleBrowseSection>
         <View style={styles.searchRow}>
           <View style={styles.searchInputWrap}>
@@ -574,6 +588,13 @@ export function BrowseTab({ onSignInRequired }: Props) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  collegesLink: { flexDirection: "row", alignItems: "center", gap: 5 },
+  collegesLinkText: { fontSize: 17, fontFamily: FONT_DISPLAY },
   root: { flex: 1 },
   listArea: { flex: 1 },
   scrollFab: {

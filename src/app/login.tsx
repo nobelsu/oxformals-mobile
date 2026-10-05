@@ -1,3 +1,4 @@
+import { roleNeedsYear } from "@/src/lib/data/roles";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { AuthFormBlock } from "@/src/components/auth/AuthFormBlock";
@@ -234,8 +235,8 @@ export default function LoginScreen() {
     if (
       !name.trim() ||
       !college.trim() ||
-      !year.trim() ||
-      !role.trim()
+      !role.trim() ||
+      (roleNeedsYear(role) && !year.trim())
     ) {
       setError("Add your name, college, year and role.");
       return;
@@ -247,7 +248,7 @@ export default function LoginScreen() {
       return;
     }
     const normalizedYear = year.trim();
-    if (!/^\d+$/.test(normalizedYear)) {
+    if (roleNeedsYear(role) && !/^\d+$/.test(normalizedYear)) {
       setError("Year must be a number, e.g. 2.");
       return;
     }

@@ -1,3 +1,8 @@
+import {
+  isoToOxfordDateKey,
+  OXFORD_TIME_ZONE,
+  oxfordParts,
+} from "@/src/lib/time/oxfordTime";
 import type { ListingStatus } from "@/src/lib/data/types";
 
 export function formatListingSeatsLabel(seatsAvailable: number): string {
@@ -21,38 +26,38 @@ export function formatListingStatusLabel(
   }
 }
 
-// "Thu 8 May · 7:15pm"
+// "Thu 8 May · 7:15pm", in Oxford time.
 export function formatListingDate(iso: string): string {
   const d = new Date(iso);
   const day = new Intl.DateTimeFormat("en-GB", {
+    timeZone: OXFORD_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
   }).format(d);
-  let hours = d.getHours();
-  const minutes = d.getMinutes().toString().padStart(2, "0");
-  const suffix = hours >= 12 ? "pm" : "am";
-  hours = hours % 12 || 12;
-  const time =
-    minutes === "00" ? `${hours}${suffix}` : `${hours}:${minutes}${suffix}`;
-  return `${day} · ${time}`;
+  return `${day} · ${formatListingTime(iso)}`;
+}
+
+// "7:15pm" or "7pm", in Oxford time.
+export function formatListingTime(iso: string): string {
+  const { h, mi } = oxfordParts(Date.parse(iso));
+  const suffix = h >= 12 ? "pm" : "am";
+  const hours = h % 12 || 12;
+  const minutes = String(mi).padStart(2, "0");
+  return minutes === "00" ? `${hours}${suffix}` : `${hours}:${minutes}${suffix}`;
 }
 
 export function formatShortDate(iso: string): string {
-  const d = new Date(iso);
   return new Intl.DateTimeFormat("en-GB", {
+    timeZone: OXFORD_TIME_ZONE,
     day: "numeric",
     month: "short",
-  }).format(d);
+  }).format(new Date(iso));
 }
 
-/** `YYYY-MM-DD` in the user's local timezone (for `<input type="date">` comparison). */
+/** `YYYY-MM-DD` of a formal's Oxford day (compared with calendar picks). */
 export function isoToLocalDateKey(iso: string): string {
-  const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return isoToOxfordDateKey(iso);
 }
 
 /** `YYYY-MM-DD` in the user's local timezone from a millisecond timestamp. */

@@ -6,15 +6,16 @@ import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { space } from "@/src/constants/spacing";
+import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
 type Props = {
   onEditPress: () => void;
-  onSettingsPress: () => void;
 };
 
-export function MyProfileView({ onEditPress, onSettingsPress }: Props) {
+export function MyProfileView({ onEditPress }: Props) {
   const { user } = useAuth();
+  const router = useRouter();
 
   if (!user) {
     return <OxLoadingView fill />;
@@ -48,7 +49,7 @@ export function MyProfileView({ onEditPress, onSettingsPress }: Props) {
         <OxButton
           title="Settings"
           variant="secondary"
-          onPress={onSettingsPress}
+          onPress={() => router.push("/settings")}
           style={styles.actionButton}
         />
       </View>

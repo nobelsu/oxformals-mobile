@@ -2,7 +2,6 @@ import { api } from "@/convex/_generated/api";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxSpinner } from "@/src/components/ui/OxSpinner";
 import { OxText } from "@/src/components/ui/OxText";
-import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { errorMessage } from "@/src/lib/errorMessage";
 import { useMutation, useQuery } from "convex/react";
@@ -24,24 +23,17 @@ function report(title: string) {
   return (error: unknown) => Alert.alert(title, errorMessage(error));
 }
 
-function SectionTitle({ children }: { children: string }) {
-  const { colors } = useOxTheme();
-  return (
-    <OxText style={[styles.sectionTitle, { color: colors.ink, fontFamily: FONT_DISPLAY }]}>
-      {children}
-    </OxText>
-  );
-}
-
-function ToggleRow({
+export function ToggleRow({
   label,
   note,
   value,
+  disabled,
   onChange,
 }: {
   label: string;
   note?: string;
   value: boolean;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   const { colors } = useOxTheme();
@@ -55,6 +47,7 @@ function ToggleRow({
       </View>
       <Switch
         value={value}
+        disabled={disabled}
         onValueChange={onChange}
         trackColor={{ true: colors.accent, false: colors.inkSoft }}
         accessibilityLabel={label}
@@ -71,7 +64,6 @@ export function NotificationPrefsSection() {
 
   return (
     <View style={styles.section}>
-      <SectionTitle>Notifications</SectionTitle>
       {!prefs ? (
         <OxSpinner />
       ) : (
@@ -117,7 +109,6 @@ export function PrivacySection() {
 
   return (
     <View style={styles.section}>
-      <SectionTitle>Privacy</SectionTitle>
       <ToggleRow
         label="Private account"
         note="Only followers you approve see your activity."
@@ -168,8 +159,7 @@ export function PrivacySection() {
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: 24, gap: 8 },
-  sectionTitle: { fontSize: 20, textTransform: "uppercase" },
+  section: { gap: 8 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
   rowText: { flex: 1 },
   rowLabel: { fontSize: 16 },

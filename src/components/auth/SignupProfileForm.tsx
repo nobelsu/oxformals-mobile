@@ -1,3 +1,8 @@
+import {
+  roleAfterCollegeChange,
+  roleChoices,
+  roleNeedsYear,
+} from "@/src/lib/data/roles";
 import { DoodleAddButton } from "@/src/components/ui/DoodleAddButton";
 import { DoodleCloseButton } from "@/src/components/ui/DoodleCloseButton";
 import { DoodleOutline } from "@/src/components/ui/DoodleOutline";
@@ -26,7 +31,7 @@ import {
 const YEAR_ACCESSORY_ID = "signup-profile-year-next";
 const PHONE_ACCESSORY_ID = "signup-profile-phone-next";
 
-export const ROLE_OPTIONS = ["Undergrad", "Masters", "DPhil"] as const;
+export { ROLE_OPTIONS } from "@/src/lib/data/roles";
 export const MAX_INTEREST_LENGTH = 40;
 
 export function normalizeInterest(raw: string): string {
@@ -43,17 +48,8 @@ export function useCollegeOptions(college: string) {
   }, [college]);
 }
 
-export function useRoleOptions(role: string) {
-  return useMemo(() => {
-    const trimmed = role.trim();
-    if (
-      trimmed &&
-      !ROLE_OPTIONS.includes(trimmed as (typeof ROLE_OPTIONS)[number])
-    ) {
-      return [trimmed, ...ROLE_OPTIONS];
-    }
-    return [...ROLE_OPTIONS];
-  }, [role]);
+export function useRoleOptions(role: string, college: string = "") {
+  return useMemo(() => roleChoices(college, role), [college, role]);
 }
 
 export function FieldLabel({ children }: { children: string }) {
@@ -239,6 +235,8 @@ type RolePickerModalProps = {
   visible: boolean;
   onClose: () => void;
   value: string;
+  /** Limits the choices to the roles this college has. */
+  college?: string;
   onChange: (role: string) => void;
   onAfterSelect?: () => void;
 };
@@ -247,11 +245,12 @@ export function RolePickerModal({
   visible,
   onClose,
   value,
+  college,
   onChange,
   onAfterSelect,
 }: RolePickerModalProps) {
   const { colors } = useOxTheme();
-  const roleOptions = useRoleOptions(value);
+  const roleOptions = useRoleOptions(value, college);
 
   return (
     <OxModal
@@ -539,7 +538,8 @@ export function SignupProfileForm({
             <FieldLabel>Year</FieldLabel>
             <OxInput
               ref={yearRef}
-              placeholder="2"
+              placeholder={roleNeedsYear(values.role) ? "2" : "n/a"}
+              editable={roleNeedsYear(values.role)}
               value={values.year}
               onChangeText={(t) =>
                 onChange("year", t.replace(/\D/g, "").slice(0, 2))
@@ -617,7 +617,12 @@ export function SignupProfileForm({
         visible={collegeModalOpen}
         onClose={() => setCollegeModalOpen(false)}
         value={values.college}
-        onChange={(v) => onChange("college", v)}
+        onChange={(v) => {
+          onChange("college", v);
+          const nextRole = roleAfterCollegeChange(v, values.role);
+          if (nextRole !== values.role) onChange("role", nextRole);
+          if (!roleNeedsYear(nextRole)) onChange("year", "");
+        }}
         searchSeed={s(11)}
         onAfterSelect={afterCollegeSelected}
       />
@@ -625,7 +630,11 @@ export function SignupProfileForm({
         visible={roleModalOpen}
         onClose={() => setRoleModalOpen(false)}
         value={values.role}
-        onChange={(v) => onChange("role", v)}
+        college={values.college}
+        onChange={(v) => {
+          onChange("role", v);
+          if (!roleNeedsYear(v)) onChange("year", "");
+        }}
         onAfterSelect={afterRoleSelected}
       />
 

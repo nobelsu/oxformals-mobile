@@ -74,6 +74,7 @@ export function DeleteAccountSheet({ visible, onClose }: Props) {
       await deleteMyAccount({ confirmEmail: confirmInput });
       await signOut();
       onClose();
+      if (router.canDismiss()) router.dismissAll();
       router.replace("/login");
     } catch (e) {
       setError(

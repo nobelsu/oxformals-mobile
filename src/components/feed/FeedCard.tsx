@@ -10,6 +10,7 @@ import { ListingTypeTag } from "@/src/components/ui/ListingTypeTag";
 import { OxText } from "@/src/components/ui/OxText";
 import { SketchCard } from "@/src/components/ui/SketchCard";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
+import { collegeToSlug } from "@/lib/data/collegeSlug";
 import {
   formatListingDate,
   formatListingSeatsLabel,
@@ -57,6 +58,11 @@ export const FeedCard = memo(function FeedCard({ item, onOpenComments }: Props) 
     if (item.kind === "listing") router.push(`/listing/${item.listing._id}`);
     else if (actor) router.push(`/profile/${actor._id}`);
   };
+  // Reviews and attended formals lead to the college; a listing's name opens the listing.
+  const openCollege =
+    item.kind === "listing"
+      ? undefined
+      : () => router.push(`/college/${collegeToSlug(college)}`);
 
   return (
     // A near-zero tilt keeps feed cards level (0 would pick a seeded tilt).
@@ -84,7 +90,13 @@ export const FeedCard = memo(function FeedCard({ item, onOpenComments }: Props) 
 
       <Pressable onPress={openTarget} accessibilityRole="button">
         <View style={styles.titleRow}>
-          <OxText style={[styles.college, { color: colors.ink }]}>{college}</OxText>
+          <OxText
+            style={[styles.college, { color: colors.ink }]}
+            onPress={openCollege}
+            accessibilityRole={openCollege ? "link" : undefined}
+          >
+            {college}
+          </OxText>
           {item.onWishlist ? (
             <View style={[styles.wishTag, { backgroundColor: colors.accent }]}>
               <OxText style={[styles.wishTagText, { color: colors.accentInk }]}>

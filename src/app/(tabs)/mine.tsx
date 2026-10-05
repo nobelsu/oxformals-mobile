@@ -1,9 +1,7 @@
 import { ActiveListingsSection } from "@/src/components/profile/ActiveListingsSection";
 import { MyProfileView } from "@/src/components/profile/MyProfileView";
-import { SettingsModal } from "@/src/components/settings/SettingsModal";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import {
   SCREEN_PADDING,
   TAB_SCREEN_EDGES,
@@ -22,7 +20,6 @@ export default function ProfileTabScreen() {
   const { colors } = useOxTheme();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <View style={styles.screen}>
@@ -44,15 +41,10 @@ export default function ProfileTabScreen() {
         >
           <MyProfileView
             onEditPress={() => router.push("/profile/edit")}
-            onSettingsPress={() => setSettingsOpen(true)}
           />
           <ActiveListingsSection />
         </ScrollView>
       </SafeAreaView>
-      <SettingsModal
-        visible={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
     </View>
   );
 }

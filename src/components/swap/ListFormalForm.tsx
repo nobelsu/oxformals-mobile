@@ -1,3 +1,5 @@
+import { formatListingDate } from "@/src/lib/data/format";
+import { isoToPickerDate, pickerDateToIso } from "@/src/lib/time/oxfordTime";
 import { useAuth } from "@/src/components/auth/useAuth";
 import { MenuAttachChooserModal } from "@/src/components/swap/MenuAttachChooserModal";
 import { Chip } from "@/src/components/ui/Chip";
@@ -46,8 +48,8 @@ type EditProps = {
 type Props = CreateProps | EditProps;
 
 function listingDateTime(listing: Listing): Date {
-  const parsed = Date.parse(listing.dateTime);
-  return Number.isNaN(parsed) ? defaultListFormalDateTime() : new Date(parsed);
+  // Shown in Oxford time, whatever the phone's timezone.
+  return isoToPickerDate(listing.dateTime) ?? defaultListFormalDateTime();
 }
 
 function initialPriceString(listing: Listing): string {
@@ -64,6 +66,7 @@ export function ListFormalForm(props: Props) {
       (initialListing!.guestSeats ?? []).reduce((n, g) => n + g.count, 0)
     : 1;
 
+  const dateLocked = isEdit && initialListing!.members.length > 1;
   const { user } = useAuth();
   const { colors } = useOxTheme();
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
@@ -145,13 +148,14 @@ export function ListFormalForm(props: Props) {
     if (!isEdit && !user) return;
     if (!isEdit) {
       const college = normalizeCollegeName(user!.college);
-      if (!college || !user!.year.trim() || !user!.role.trim()) {
+      const role = user!.role.trim();
+      if (!college || !role || (!user!.year.trim() && role !== "Fellow")) {
         setError("Complete your profile (college, year, role) first.");
         return;
       }
     }
 
-    const iso = dateTime.toISOString();
+    const iso = pickerDateToIso(dateTime);
     const needsPrice = listingType === "pay" || listingType === "both";
     const priceNum = needsPrice ? parseInt(price, 10) : undefined;
     if (needsPrice && (!priceNum || priceNum < 1)) {
@@ -197,7 +201,14 @@ export function ListFormalForm(props: Props) {
 
   return (
     <View>
-      <OxDateTimeField value={dateTime} onChange={setDateTime} />
+      {dateLocked ? (
+        // The backend refuses a new date once anyone has joined.
+        <Text style={[oxText, { color: colors.inkMuted, marginTop: 8 }]}>
+          {formatListingDate(pickerDateToIso(dateTime))} · locked, guests have joined
+        </Text>
+      ) : (
+        <OxDateTimeField value={dateTime} onChange={setDateTime} />
+      )}
       <Text style={[styles.sectionLabel, oxText, { color: colors.ink }]}>
         Group size
       </Text>

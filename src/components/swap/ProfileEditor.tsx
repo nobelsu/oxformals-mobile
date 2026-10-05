@@ -1,3 +1,4 @@
+import { roleAfterCollegeChange, roleNeedsYear } from "@/src/lib/data/roles";
 import {
   CollegePickerModal,
   FieldLabel,
@@ -131,7 +132,7 @@ export function ProfileEditor({
       }
       const year = yearDraft.trim();
       // Fellows have no year.
-      if (roleDraft.trim() !== "Fellow" && !/^\d+$/.test(year)) {
+      if (roleNeedsYear(roleDraft) && !/^\d+$/.test(year)) {
         setError("Year must be a number, e.g. 2.");
         return;
       }
@@ -329,7 +330,8 @@ export function ProfileEditor({
             <View style={[profileFieldStyles.field, profileFieldStyles.yearCol]}>
               <FieldLabel>Year</FieldLabel>
               <OxInput
-                placeholder="2"
+                placeholder={roleNeedsYear(roleDraft) ? "2" : "n/a"}
+                editable={roleNeedsYear(roleDraft)}
                 value={yearDraft}
                 onChangeText={(t) =>
                   setYearDraft(t.replace(/\D/g, "").slice(0, 2))
@@ -441,14 +443,23 @@ export function ProfileEditor({
         visible={collegeModalOpen}
         onClose={() => setCollegeModalOpen(false)}
         value={collegeDraft}
-        onChange={setCollegeDraft}
+        onChange={(college) => {
+          setCollegeDraft(college);
+          const nextRole = roleAfterCollegeChange(college, roleDraft);
+          setRoleDraft(nextRole);
+          if (!roleNeedsYear(nextRole)) setYearDraft("");
+        }}
         searchSeed={11}
       />
       <RolePickerModal
         visible={roleModalOpen}
         onClose={() => setRoleModalOpen(false)}
         value={roleDraft}
-        onChange={setRoleDraft}
+        college={collegeDraft}
+        onChange={(role) => {
+          setRoleDraft(role);
+          if (!roleNeedsYear(role)) setYearDraft("");
+        }}
       />
     </>
   );
