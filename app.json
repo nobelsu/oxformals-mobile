@@ -77,7 +77,8 @@
         {
           "contactsPermission": "Find friends on Oxformals. Your contacts are checked, not stored."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
