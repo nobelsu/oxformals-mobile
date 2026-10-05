@@ -55,11 +55,8 @@ export function SettingsModal({ visible, onClose }: Props) {
   return (
     <>
       <OxModal visible={visible} onClose={onClose} title="Settings">
-      <OxText style={{ color: colors.inkMuted, marginBottom: 4 }}>
-        Appearance theme
-      </OxText>
-      <OxText style={{ color: colors.inkSoft, fontSize: 12, marginBottom: 12 }}>
-        From warm paper to mint — same sketchbook, new colors.
+      <OxText style={{ color: colors.inkMuted, marginBottom: 12 }}>
+        Theme
       </OxText>
       <View style={styles.themeChips}>
         {UI_FONT_OPTIONS.map((opt) => (

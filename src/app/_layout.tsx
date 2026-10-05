@@ -82,6 +82,7 @@ function RootStack() {
       />
       <Stack.Screen name="notifications" options={{ headerShown: true }} />
       <Stack.Screen name="search" options={{ headerShown: true }} />
+      <Stack.Screen name="contacts" options={{ headerShown: true }} />
       <Stack.Screen
         name="your-formals"
         options={{ headerShown: true, title: "Your formals" }}

@@ -236,10 +236,6 @@ export function ProfileEditor({
         >
           Your details
         </Text>
-        <Text style={[styles.cardSubtitle, oxText, { color: colors.inkMuted }]}>
-          College, year, and role are saved with each formal you list. Avatar and
-          bio show on your profile.
-        </Text>
 
         <View style={styles.avatarSection}>
           <Avatar avatar={avatarDraft} name={user.name} size={72} />

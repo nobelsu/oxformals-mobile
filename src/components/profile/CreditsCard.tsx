@@ -29,10 +29,6 @@ export function CreditsCard() {
           {pending.join(" · ")}
         </OxText>
       ) : null}
-      <OxText style={[styles.note, { color: colors.inkMuted }]}>
-        One credit is one seat at any formal. Host a guest who pays with a
-        credit and you earn it a day after your formal.
-      </OxText>
     </SketchCard>
   );
 }

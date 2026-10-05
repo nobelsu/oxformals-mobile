@@ -34,7 +34,7 @@ export function ListingMembership({ listing, viewerId, isPast }: Props) {
   function confirmRemove(userId: string, name: string) {
     Alert.alert(
       `Remove ${name}?`,
-      "They lose their seat and are told. Any credit they spent is refunded, and if this was a swap you give up the seat you got at their formal.",
+      "They lose their seat and are told. A swap is undone both ways.",
       [
         { text: "Keep them", style: "cancel" },
         {
@@ -49,7 +49,7 @@ export function ListingMembership({ listing, viewerId, isPast }: Props) {
   function confirmLeave() {
     Alert.alert(
       "Leave this formal?",
-      "Your seat goes back to the host and any credit you spent is refunded. If this was a swap, your guest keeps their seat at your formal.",
+      "Your seat goes back to the host. Any credit you spent is refunded.",
       [
         { text: "Stay", style: "cancel" },
         {

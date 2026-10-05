@@ -114,8 +114,8 @@ export function FeedTab() {
           ) : (
             <OxText style={[styles.empty, { color: colors.inkMuted }]}>
               {scope === "following"
-                ? "Nothing from people you follow yet. Follow a few people to see their formals and reviews here."
-                : "Nothing here yet. List a formal to get things started."}
+                ? "Nothing from people you follow yet."
+                : "Nothing here yet."}
             </OxText>
           )
         }

@@ -63,6 +63,11 @@ export default defineSchema({
      * attended, badges, feed items) is hidden from non-followers.
      */
     isPrivate: v.optional(v.boolean()),
+    /**
+     * False when someone has switched off being found by people who hold
+     * their number or email (convex/contacts.ts). Absent means findable.
+     */
+    discoverableByContacts: v.optional(v.boolean()),
     /** Push/email per category. Absent means the defaults (see resolvePrefs). */
     notificationPrefs: v.optional(notificationPrefsValidator),
   })

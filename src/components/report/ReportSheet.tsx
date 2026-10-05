@@ -78,8 +78,7 @@ export function ReportSheet({ target, subject, onClose }: Props) {
       {sent ? (
         <>
           <OxText style={[styles.body, { color: colors.inkMuted }]}>
-            Thanks. The team will look at it. They won&apos;t be told you reported
-            them.
+            Thanks. They won&apos;t be told.
           </OxText>
           <OxButton title="Done" onPress={close} style={styles.send} />
         </>

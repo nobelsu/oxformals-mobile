@@ -33,11 +33,7 @@ export function MessagesEmptyState({ style }: Props) {
             { color: colors.ink, fontFamily: FONT_DISPLAY },
           ]}
         >
-          Nothing here yet
-        </Text>
-        <Text style={[styles.body, { color: colors.inkMuted }]}>
-          Message someone from your college or start a group chat. Your
-          conversations will show up here once you send the first message.
+          No chats yet
         </Text>
         <View style={styles.actions}>
           <OxButton

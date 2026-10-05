@@ -57,7 +57,7 @@ export function ProfileSocialBar({ userId, name }: Props) {
   function confirmBlock() {
     Alert.alert(
       `Block ${firstName}?`,
-      "They won't be able to message you, follow you or request your formals, and you won't see each other's listings. They aren't told.",
+      "You won't see or hear from each other. They aren't told.",
       [
         { text: "Not now", style: "cancel" },
         {
@@ -138,12 +138,23 @@ export function ProfileSocialBar({ userId, name }: Props) {
             variant={state.following === "none" ? "primary" : "secondary"}
             loading={busy}
             style={styles.grow}
-            onPress={() =>
-              void run(
-                () => (state.following === "none" ? follow({ userId }) : unfollow({ userId })),
-                "Couldn't update this follow",
-              )
-            }
+            onPress={() => {
+              if (state.following === "none") {
+                void run(() => follow({ userId }), "Couldn't follow them");
+              } else if (state.following === "pending") {
+                void run(() => unfollow({ userId }), "Couldn't cancel your request");
+              } else {
+                Alert.alert(`Unfollow ${firstName}?`, undefined, [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Unfollow",
+                    style: "destructive",
+                    onPress: () =>
+                      void run(() => unfollow({ userId }), "Couldn't unfollow them"),
+                  },
+                ]);
+              }
+            }}
           />
           <OxButton
             title="Message"
@@ -178,8 +189,7 @@ export function ProfileSocialBar({ userId, name }: Props) {
         <View style={styles.private}>
           <Ionicons name="lock-closed-outline" size={18} color={colors.inkMuted} />
           <OxText style={[styles.note, { color: colors.inkMuted }]}>
-            This account is private. Follow {firstName} to see their reviews,
-            formals and badges.
+            This account is private.
           </OxText>
         </View>
       ) : null}

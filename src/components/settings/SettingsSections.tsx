@@ -9,10 +9,10 @@ import { useMutation, useQuery } from "convex/react";
 import { Alert, StyleSheet, Switch, View } from "react-native";
 
 const TOPICS = [
-  ["bookings", "Bookings", "Requests, replies and cancelled formals"],
-  ["invites", "Group invites", "Invites to a group, and who has joined yours"],
-  ["social", "Social", "New followers, and friends joining Oxformals"],
-  ["credits", "Credits and reminders", "Credits, formal tomorrow, and new formals you want"],
+  ["bookings", "Bookings", "Requests and replies"],
+  ["invites", "Group invites", ""],
+  ["social", "Social", "New followers"],
+  ["credits", "Credits and reminders", ""],
 ] as const;
 
 const CHANNELS = [
@@ -71,14 +71,16 @@ export function NotificationPrefsSection() {
 
   return (
     <View style={styles.section}>
-      <SectionTitle>What you hear about</SectionTitle>
+      <SectionTitle>Notifications</SectionTitle>
       {!prefs ? (
         <OxSpinner />
       ) : (
         TOPICS.map(([category, title, description]) => (
           <View key={category} style={styles.topic}>
             <OxText style={[styles.rowLabel, { color: colors.ink }]}>{title}</OxText>
-            <OxText style={[styles.rowNote, { color: colors.inkMuted }]}>{description}</OxText>
+            {description ? (
+              <OxText style={[styles.rowNote, { color: colors.inkMuted }]}>{description}</OxText>
+            ) : null}
             <View style={styles.channels}>
               {CHANNELS.map(([channel, label]) => (
                 <View key={channel} style={styles.channel}>
@@ -109,6 +111,8 @@ export function PrivacySection() {
   const privacy = useQuery(api.follows.getMyPrivacy, {});
   const blocks = useQuery(api.blocks.listMyBlocks, {});
   const setPrivate = useMutation(api.follows.setPrivate);
+  const discovery = useQuery(api.contacts.getContactDiscovery, {});
+  const setDiscovery = useMutation(api.contacts.setContactDiscovery);
   const unblock = useMutation(api.blocks.unblock);
 
   return (
@@ -116,10 +120,17 @@ export function PrivacySection() {
       <SectionTitle>Privacy</SectionTitle>
       <ToggleRow
         label="Private account"
-        note="Only people you approve can follow you and see your reviews, formals and badges."
+        note="Only followers you approve see your activity."
         value={privacy?.isPrivate ?? false}
         onChange={(isPrivate) => {
           setPrivate({ isPrivate }).catch(report("Couldn't save that"));
+        }}
+      />
+      <ToggleRow
+        label="Let my contacts find me"
+        value={discovery?.discoverable ?? true}
+        onChange={(discoverable) => {
+          setDiscovery({ discoverable }).catch(report("Couldn't save that"));
         }}
       />
       <OxText style={[styles.rowLabel, { color: colors.ink, marginTop: 14 }]}>
@@ -129,7 +140,7 @@ export function PrivacySection() {
         <OxSpinner />
       ) : blocks.length === 0 ? (
         <OxText style={[styles.rowNote, { color: colors.inkMuted }]}>
-          You haven&apos;t blocked anyone. Block someone from their profile.
+          No one blocked.
         </OxText>
       ) : (
         blocks.map((b) => (

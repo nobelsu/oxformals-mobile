@@ -131,7 +131,7 @@ export default function ListingDetailScreen() {
     const guests = listing ? listing.members.length - 1 : 0;
     const guestNote =
       guests > 0
-        ? ` Your ${guests === 1 ? "guest" : `${guests} guests`} will be told, any credits are refunded and linked swaps are undone.`
+        ? ` Your ${guests === 1 ? "guest is" : `${guests} guests are`} told and refunded.`
         : "";
     const pendingNote =
       pending.length > 0
@@ -139,7 +139,7 @@ export default function ListingDetailScreen() {
         : "";
     Alert.alert(
       "Cancel this formal?",
-      `This removes your listing and can't be undone.${guestNote}${pendingNote}`,
+      `This can't be undone.${guestNote}${pendingNote}`,
       [
         { text: "Keep it", style: "cancel" },
         {

@@ -36,10 +36,6 @@ export function HistoryEmptyState({ style }: Props) {
         >
           Nothing here yet
         </Text>
-        <Text style={[styles.body, { color: colors.inkMuted }]}>
-          Past listings and swap requests show up here once you&apos;ve listed a
-          formal or sent a request.
-        </Text>
         <View style={styles.actions}>
           <OxButton
             title="Browse formals"

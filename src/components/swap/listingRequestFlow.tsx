@@ -28,7 +28,7 @@ function alertBlockingRequest(
   }
   Alert.alert(
     "Request already sent",
-    "You already have a request waiting on this listing. Withdraw it under Your formals before sending another.",
+    "Withdraw it under Your formals to send another.",
   );
 }
 
@@ -100,8 +100,8 @@ export function useListingRequest({
           Alert.alert(
             "Request sent",
             links.length === 1
-              ? "Send your guest their link so they can claim the seat. The host can accept once they've joined."
-              : `Send each of your ${links.length} guests their link so they can claim a seat. The host can accept once they've joined.`,
+              ? "Send your guest their link. The host can accept once they've joined."
+              : `Send your ${links.length} guests their links. The host can accept once they've joined.`,
             [{ text: "Share links", onPress: () => void shareSeatLinks(links) }],
           );
         } else if (accepted) {

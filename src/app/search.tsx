@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import { Avatar } from "@/src/components/ui/Avatar";
+import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
 import { OxSpinner } from "@/src/components/ui/OxSpinner";
 import { OxText } from "@/src/components/ui/OxText";
@@ -42,9 +43,12 @@ export default function SearchScreen() {
           seed={23}
         />
         {!active ? (
-          <OxText style={[styles.note, { color: colors.inkMuted }]}>
-            Type at least {MIN_QUERY_LENGTH} letters.
-          </OxText>
+          <OxButton
+            title="Find friends from your contacts"
+            variant="secondary"
+            onPress={() => router.push("/contacts")}
+            style={styles.contacts}
+          />
         ) : people === undefined ? (
           <View style={styles.center}>
             <OxSpinner />
@@ -91,6 +95,7 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   name: { fontSize: 17 },
   college: { fontSize: 14 },
+  contacts: { marginTop: 16 },
   note: { fontSize: 15, textAlign: "center", paddingVertical: 32 },
   center: { paddingVertical: 32, alignItems: "center" },
 });

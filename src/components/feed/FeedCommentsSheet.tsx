@@ -72,7 +72,7 @@ export function FeedCommentsSheet({ item, onClose }: Props) {
         </View>
       ) : comments.length === 0 ? (
         <OxText style={[styles.empty, { color: colors.inkMuted }]}>
-          No comments yet. Say something nice.
+          No comments yet.
         </OxText>
       ) : (
         <View style={styles.list}>

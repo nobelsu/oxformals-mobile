@@ -78,7 +78,7 @@ export default function NotificationsScreen() {
           }}
           ListEmptyComponent={
             <OxText style={[styles.empty, { color: colors.inkMuted }]}>
-              Nothing yet. Requests, invites and follows show up here.
+              Nothing yet.
             </OxText>
           }
           ListFooterComponent={

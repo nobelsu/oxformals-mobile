@@ -314,7 +314,7 @@ export function JoinRequestSheet({
             </View>
           ) : friendsList ? (
             <OxText style={[styles.hint, { color: colors.inkMuted, marginTop: 8 }]}>
-              People you follow who follow you back show up here.
+              Mutual follows show up here.
             </OxText>
           ) : null}
 
@@ -401,7 +401,7 @@ export function JoinRequestSheet({
           ) : null}
           {newPeople > 0 ? (
             <OxText style={[styles.hint, { color: colors.inkMuted }]}>
-              New people pay with their starter credit. You get a link to send them.
+              You'll get a link to send them.
             </OxText>
           ) : null}
         </View>

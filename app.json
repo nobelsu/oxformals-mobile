@@ -28,7 +28,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS"
       ],
       "package": "com.nobelsu.oxformalsmobile"
     },
@@ -65,6 +66,12 @@
           "color": "#E6F4FE",
           "defaultChannel": "chat",
           "sounds": []
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Oxformals checks your contacts to show which friends are already on Oxformals and let you invite the rest. They are compared and not stored."
         }
       ]
     ],
