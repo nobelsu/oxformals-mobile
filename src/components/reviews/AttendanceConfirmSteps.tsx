@@ -110,8 +110,7 @@ export function AttendanceReasonStep({
     <>
       <AttendanceStepTitle>Why didn&apos;t you attend?</AttendanceStepTitle>
       <AttendanceStepBody>
-        This helps us understand no-shows. Your answer is not shared with the
-        host.
+        The host won&apos;t see your answer.
       </AttendanceStepBody>
       <OxText style={[styles.radioLabel, { color: colors.inkSoft }]}>
         Reason you did not attend

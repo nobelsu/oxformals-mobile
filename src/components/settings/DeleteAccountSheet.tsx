@@ -132,9 +132,7 @@ export function DeleteAccountSheet({ visible, onClose }: Props) {
           ) : null}
 
           <OxText style={{ color: colors.ink }}>
-            Your profile and personal data are deleted. Messages and reviews
-            stay, shown as &ldquo;Deleted user&rdquo;. This can&apos;t be
-            undone.
+            Your profile and data go. Reviews and messages stay as &ldquo;Deleted user&rdquo;. This can&apos;t be undone.
           </OxText>
 
           <View style={styles.section}>

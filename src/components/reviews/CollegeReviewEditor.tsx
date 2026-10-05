@@ -173,8 +173,7 @@ export function CollegeReviewEditor({ review, onSaved, onCancel }: Props) {
         scrollable={false}
       >
         <OxText style={{ color: colors.inkMuted, fontSize: 14, lineHeight: 20 }}>
-          Would you like to post this review anonymously? Anonymous reviews
-          won&apos;t show your name on your profile.
+          Post anonymously? Your name won&apos;t show.
         </OxText>
         <View style={styles.modalActions}>
           <OxButton

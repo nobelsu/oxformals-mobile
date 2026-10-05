@@ -90,7 +90,7 @@ export function WishlistChips({
         Formals I want to try
       </Text>
       <Text style={[styles.subtitle, oxText, { color: colors.inkMuted }]}>
-        Tap colleges, then save your wishlist.
+        Tap colleges, then save.
       </Text>
       <OxInput
         value={searchQuery}

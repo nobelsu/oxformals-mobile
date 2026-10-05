@@ -37,8 +37,7 @@ export function PushPermissionPromptModal({ visible, onClose }: Props) {
           NOTIFICATIONS ARE OFF
         </Text>
         <OxText style={[styles.body, { color: colors.inkMuted }]}>
-          To get chat alerts, turn on notifications for Oxformals in your device
-          settings.
+          Turn on notifications for Oxformals in Settings.
         </OxText>
         <OxButton
           title="Open Settings"

@@ -32,7 +32,7 @@ export function SignInGate({ message = "Sign in to continue" }: Props) {
           { color: colors.inkMuted, fontFamily: FONT_DISPLAY },
         ]}
       >
-        Oxford email and a one-time code — under a minute.
+        Oxford email and a one-time code.
       </Text>
       <AuthFormBlock
         action={

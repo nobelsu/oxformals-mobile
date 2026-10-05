@@ -9,7 +9,7 @@ export type IntroSlide = {
 export const INTRO_SLIDES: readonly IntroSlide[] = [
   {
     title: "Welcome to Oxformals",
-    body: "The easiest way to experience formals at colleges across Oxford.",
+    body: "Formals at colleges across Oxford.",
     illustration: "welcome",
   },
   {
@@ -19,7 +19,7 @@ export const INTRO_SLIDES: readonly IntroSlide[] = [
   },
   {
     title: "Swap & Chat",
-    body: "Swap a seat, spend a credit or pay to join, then chat with your group.",
+    body: "Swap, spend a credit or pay to join.",
     illustration: "chat",
   },
 ];
