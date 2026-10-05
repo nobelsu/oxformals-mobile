@@ -13,13 +13,13 @@ export const INTRO_SLIDES: readonly IntroSlide[] = [
     illustration: "welcome",
   },
   {
-    title: "Browse & List",
-    body: "Browse open formals at other colleges, or list your own.",
+    title: "Find a seat",
+    body: "Swap a seat, spend a credit or pay the host.",
     illustration: "browse",
   },
   {
-    title: "Swap & Chat",
-    body: "Swap, spend a credit or pay to join.",
+    title: "Go together",
+    body: "Bring friends. Host a guest to earn a credit.",
     illustration: "chat",
   },
 ];

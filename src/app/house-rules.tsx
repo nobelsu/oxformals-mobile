@@ -6,7 +6,9 @@ import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { OxText } from "@/src/components/ui/OxText";
+import { WEB_ORIGIN } from "@/src/lib/webOrigin";
+import { Linking, StyleSheet, View } from "react-native";
 
 export default function HouseRulesScreen() {
   const router = useRouter();
@@ -34,7 +36,6 @@ export default function HouseRulesScreen() {
   return (
     <AuthScreenLayout
       title="House rules"
-      subtitle="Quick read before you browse."
       showWordmark={false}
       scrollable
       footer={
@@ -51,6 +52,30 @@ export default function HouseRulesScreen() {
       }
     >
       <HouseRulesCard />
+      <OxText style={[styles.legal, { color: colors.inkMuted }]}>
+        By continuing you agree to the{" "}
+        <OxText
+          style={styles.link}
+          onPress={() => void Linking.openURL(`${WEB_ORIGIN}/terms`)}
+          accessibilityRole="link"
+        >
+          Terms
+        </OxText>{" "}
+        and{" "}
+        <OxText
+          style={styles.link}
+          onPress={() => void Linking.openURL(`${WEB_ORIGIN}/privacy`)}
+          accessibilityRole="link"
+        >
+          Privacy policy
+        </OxText>
+        .
+      </OxText>
     </AuthScreenLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  legal: { fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: 16 },
+  link: { textDecorationLine: "underline" },
+});

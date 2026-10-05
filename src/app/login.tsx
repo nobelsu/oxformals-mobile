@@ -1,3 +1,5 @@
+import { api } from "@/convex/_generated/api";
+import { useAction } from "convex/react";
 import { roleNeedsYear } from "@/src/lib/data/roles";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/components/auth/useAuth";
@@ -51,6 +53,7 @@ const EMPTY_PROFILE: SignupProfileFormValues = {
   year: "",
   role: "",
   interests: [],
+  bio: "",
   whatsappPhone: "",
   instagramHandle: "",
 };
@@ -81,6 +84,7 @@ export default function LoginScreen() {
   const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const saveBio = useAction(api.bio.saveBio);
   const [profile, setProfile] = useState<SignupProfileFormValues>(EMPTY_PROFILE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,6 +269,11 @@ export default function LoginScreen() {
         whatsappPhone: whatsappPhone.trim() || undefined,
         instagramHandle: instagramHandle.trim() || undefined,
       });
+      // The bio goes through moderation, so it's saved on its own; a refusal
+      // doesn't hold up sign-up, they can fix it from Edit profile.
+      if (profile.bio.trim()) {
+        await saveBio({ bio: profile.bio }).catch(() => undefined);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save your profile. Try again.");
     } finally {

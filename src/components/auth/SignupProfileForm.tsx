@@ -1,3 +1,4 @@
+import { MAX_BIO_LENGTH } from "@/convex/bioLimits";
 import {
   roleAfterCollegeChange,
   roleChoices,
@@ -440,6 +441,8 @@ export type SignupProfileFormValues = {
   year: string;
   role: string;
   interests: string[];
+  /** Optional line about you; checked by moderation after sign-up. */
+  bio: string;
   whatsappPhone: string;
   instagramHandle: string;
 };
@@ -603,14 +606,18 @@ export function SignupProfileForm({
           />
         </View>
 
-        <InterestsEditor
-          interests={values.interests}
-          onInterestsChange={(v) => onChange("interests", v)}
-          boxSeed={s(9)}
-          inputSeed={s(10)}
-          addButtonSeed={s(24)}
-          inputRef={interestsRef}
-        />
+        <View style={profileFieldStyles.field}>
+          <FieldLabel>Bio (optional)</FieldLabel>
+          <OxInput
+            ref={interestsRef}
+            placeholder="A line about you"
+            value={values.bio}
+            onChangeText={(t) => onChange("bio", t.slice(0, MAX_BIO_LENGTH))}
+            maxLength={MAX_BIO_LENGTH}
+            multiline
+            seed={s(9)}
+          />
+        </View>
       </View>
 
       <CollegePickerModal
