@@ -187,7 +187,7 @@ function CollegeBody({ college }: { college: string }) {
             accessibilityLabel="Want to go"
           >
             <Ionicons
-              name={wished ? "heart" : "heart-outline"}
+              name={wished ? "star" : "star-outline"}
               size={18}
               color={wished ? colors.danger : colors.ink}
             />

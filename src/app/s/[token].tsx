@@ -10,7 +10,7 @@ export default function SeatLinkScreen() {
   const claimSeatLink = useMutation(api.seatLinks.claimSeatLink);
   const claim = useCallback(async () => {
     await claimSeatLink({ token: token ?? "" });
-    return "You're in the group. The host can accept once everyone has joined.";
+    return "Seat saved. Say if you're in on your feed.";
   }, [claimSeatLink, token]);
   return <ClaimScreen title="Your seat" claim={claim} />;
 }

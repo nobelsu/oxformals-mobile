@@ -83,7 +83,7 @@ export const FeedCard = memo(function FeedCard({ item, onOpenComments }: Props) 
               ? `${attendeeNames(item)} went to`
               : item.kind === "review"
                 ? `${firstName(actor?.name)} reviewed`
-                : `${firstName(actor?.name)} listed a formal at`}
+                : `${firstName(actor?.name)} listed a formal`}
           </OxText>
           <OxText style={[styles.when, { color: colors.inkSoft }]}>
             {formatRelativeTime(item.ts)}

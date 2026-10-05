@@ -19,6 +19,7 @@ import {
   partyWaitingReason,
   RequestPartyNote,
 } from "@/src/components/swap/RequestPartyNote";
+import { FeedListingStatus } from "@/src/components/feed/FeedListingStatus";
 import { OxBackButton } from "@/src/components/ui/OxBackButton";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
@@ -26,6 +27,7 @@ import { SketchCard } from "@/src/components/ui/SketchCard";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { DISPLAY_SECTION, SCREEN_PADDING, SECTION_GAP } from "@/src/constants/layout";
 import {
+  findBlockingOutgoingRequestForTarget,
   incomingRequestsForListing,
   pendingIncomingRequestsForListing,
 } from "@/src/lib/data/requestFilters";
@@ -116,8 +118,11 @@ export default function ListingDetailScreen() {
     );
   }
 
+  const alreadyRequested =
+    !!user && !!findBlockingOutgoingRequestForTarget(requests, user.id, listing.id);
   const canRequest =
     !isOwner &&
+    !alreadyRequested &&
     isAuthenticated &&
     listing.status === "active" &&
     listing.seatsAvailable > 0;
@@ -290,6 +295,7 @@ export default function ListingDetailScreen() {
           <CreditDisputeLink listingId={listing.id} />
         ) : null}
 
+        {!isOwner ? <FeedListingStatus listing={listing} /> : null}
         {canRequest && (
           <OxButton
             title={listingRequestCta(listing.listingType)}

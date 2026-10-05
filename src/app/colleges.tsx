@@ -170,7 +170,7 @@ const CollegeRow = memo(function CollegeRow({ entry }: { entry: Entry }) {
             }
           >
             <Ionicons
-              name={wished ? "heart" : "heart-outline"}
+              name={wished ? "star" : "star-outline"}
               size={22}
               color={wished ? colors.danger : colors.inkMuted}
             />

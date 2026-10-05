@@ -19,14 +19,14 @@ type Group = { label: string; rows: Row[] };
 const MAX_ROWS = 3;
 
 /**
- * What you're hosting, what you've asked for, what's waiting on you and what
+ * What you're hosting, where you're a guest, what you've asked for, what's waiting on you and what
  * you've hosted, at the top of the feed. Hidden until there is something to show.
  */
 export function YourFormalsCard() {
   const { colors } = useOxTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const { requests, getListing } = useData();
+  const { requests, listings, getListing } = useData();
   const hub = useListingsHubData();
   const nowMs = useNowMs();
 
@@ -77,6 +77,20 @@ export function YourFormalsCard() {
           },
         ];
       });
+    // Formals you've got a seat at as a guest, soonest first.
+    const going: Row[] = listings
+      .filter(
+        (l) =>
+          l.ownerUserId !== user.id &&
+          l.members.includes(user.id) &&
+          !listingIsPast(l.dateTime, nowMs),
+      )
+      .sort((a, b) => time(a.dateTime) - time(b.dateTime))
+      .map((listing) => ({
+        key: `g-${listing.id}`,
+        title: `${listing.college} · ${formatShortDate(listing.dateTime)}`,
+        href: `/listing/${listing.id}` as Href,
+      }));
     const followUp: Row[] = [
       ...hub.listingsNeedingAttendance.map(({ listing }) => ({
         key: `a-${listing.id}`,
@@ -95,11 +109,12 @@ export function YourFormalsCard() {
     ];
     return [
       { label: "Hosting", rows: hosting },
+      { label: "Going", rows: going },
       { label: "Requested", rows: requested },
       { label: "Follow up", rows: followUp },
       { label: "Hosted", rows: hosted },
     ].filter((g) => g.rows.length > 0);
-  }, [user, hub, requests, getListing, nowMs]);
+  }, [user, hub, requests, listings, getListing, nowMs]);
 
   if (!user || groups.length === 0) return null;
 

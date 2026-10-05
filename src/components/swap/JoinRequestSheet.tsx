@@ -70,9 +70,13 @@ export function JoinRequestSheet({
   const { colors } = useOxTheme();
   const { sendRequest } = useData();
   const credits = useQuery(api.credits.getMyCredits, {});
-  const friendsList = useQuery(api.follows.listMyFriends, {}) as
+  const allFriends = useQuery(api.follows.listMyFriends, {}) as
     | FriendOption[]
     | undefined;
+  // The host and anyone already in the group can't be brought along.
+  const friendsList = allFriends?.filter(
+    (f) => !target || !target.members.includes(f._id),
+  );
   const balance = credits?.balance ?? 0;
 
   const [friendIds, setFriendIds] = useState<string[]>([]);
