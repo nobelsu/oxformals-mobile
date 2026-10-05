@@ -118,7 +118,7 @@ export default function EditListingScreen() {
             </OxText>
           ) : null}
           <OxText style={[oxText, { color: colors.inkMuted, marginTop: 8 }]}>
-            College, year and role can't be changed here.
+            College, year and role can&apos;t be changed here.
           </OxText>
         </View>
 
