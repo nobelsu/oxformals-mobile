@@ -57,7 +57,7 @@ export function ActiveListingsSection() {
 
       {myActiveListings.length === 0 ? (
         <Text style={[oxText, { color: colors.inkMuted }]}>
-          You don&apos;t have any active listings yet. Tap + to list a formal.
+          No active listings.
         </Text>
       ) : (
         <View style={styles.cardList}>

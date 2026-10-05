@@ -34,7 +34,7 @@ export default function HouseRulesScreen() {
   return (
     <AuthScreenLayout
       title="House rules"
-      subtitle="Quick read before you browse — keeps swaps fair for everyone."
+      subtitle="Quick read before you browse."
       showWordmark={false}
       scrollable
       footer={

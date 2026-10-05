@@ -262,7 +262,7 @@ export default function LoginScreen() {
         instagramHandle: instagramHandle.trim() || undefined,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save your profile — try again in a moment.");
+      setError(e instanceof Error ? e.message : "Could not save your profile. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -507,7 +507,7 @@ export default function LoginScreen() {
                   { color: colors.inkSoft, fontFamily: FONT_DISPLAY },
                 ]}
               >
-                Check promotions or spam. Codes expire after 10 minutes.
+                Check spam. Codes last 10 minutes.
               </Text>
             </View>
           }
