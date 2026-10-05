@@ -216,7 +216,7 @@ export default function ListingDetailScreen() {
                 { color: colors.ink, fontFamily: FONT_DISPLAY },
               ]}
             >
-              Incoming requests ({pending.length})
+              {pending.length > 0 ? `Requests (${pending.length})` : "Requests"}
             </OxText>
             {incoming.map((r) => {
               const from = getUser(r.fromUserId);

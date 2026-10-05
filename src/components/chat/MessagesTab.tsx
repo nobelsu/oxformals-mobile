@@ -156,7 +156,7 @@ export function MessagesTab() {
                   style={[tabScreenTitleText, { color: colors.ink }]}
                   accessibilityRole="header"
                 >
-                  Messages
+                  Chats
                 </Text>
                 <DoodleAddButton
                   seed={12}

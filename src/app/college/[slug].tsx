@@ -75,7 +75,7 @@ export default function CollegeScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "College", headerShown: true }} />
+      <Stack.Screen options={{ title: college ?? "College", headerShown: true }} />
       {college ? (
         <CollegeBody college={college} />
       ) : (

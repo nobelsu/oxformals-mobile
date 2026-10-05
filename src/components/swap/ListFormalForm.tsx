@@ -10,7 +10,6 @@ import {
   OxDateTimeField,
 } from "@/src/components/ui/OxDateTimeField";
 import { oxText } from "@/src/constants/oxText";
-import { DISPLAY_SECTION } from "@/src/constants/layout";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { normalizeCollegeName } from "@/src/lib/data/colleges";
@@ -352,10 +351,8 @@ export function ListFormalForm(props: Props) {
 const styles = StyleSheet.create({
   sectionLabel: {
     marginTop: 16,
-    fontSize: DISPLAY_SECTION,
-    lineHeight: DISPLAY_SECTION * 1.35,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontSize: 14,
+    opacity: 0.7,
   },
   menuRow: {
     flexDirection: "row",

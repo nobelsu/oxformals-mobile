@@ -337,7 +337,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
               style={[tabScreenTitleText, { color: colors.ink }]}
               accessibilityRole="header"
             >
-              Discover
+              Browse
             </Text>
             <Pressable
               onPress={() => router.push("/colleges")}
@@ -654,7 +654,6 @@ const styles = StyleSheet.create({
   chips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
   },
   resultCount: {
     fontSize: 13,

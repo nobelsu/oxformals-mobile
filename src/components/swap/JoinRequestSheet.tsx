@@ -144,7 +144,6 @@ export function JoinRequestSheet({
   };
 
   const yourCredits = plan.filter((p) => p.payer === "you" && p.method === "credit").length;
-  const creditSeats = plan.filter((p) => p.method === "credit").length;
   const swapSeats = plan.filter((p) => p.method === "swap").length;
   const cashSeats = plan.filter((p) => p.method === "pay").length;
   const swapListings = swapListingsFor(Math.max(1, swapSeats));
@@ -253,11 +252,14 @@ export function JoinRequestSheet({
     "Choose";
 
   const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  // What you pay; seats a friend or a guest covers themselves aren't yours.
+  const yours = plan.filter((p) => p.payer === "you");
+  const yourCash = yours.filter((p) => p.method === "pay").length;
   const summary = [
     count(seats, "seat"),
     swapSeats > 0 ? count(swapSeats, "swap seat") : null,
-    creditSeats > 0 ? count(creditSeats, "credit") : null,
-    cashSeats > 0 && target.price !== undefined ? formatPrice(target.price * cashSeats) : null,
+    yourCredits > 0 ? count(yourCredits, "credit") : null,
+    yourCash > 0 && target.price !== undefined ? formatPrice(target.price * yourCash) : null,
   ]
     .filter(Boolean)
     .join(" · ");

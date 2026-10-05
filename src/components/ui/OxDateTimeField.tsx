@@ -8,6 +8,7 @@ import { space, TAP_MIN } from "@/src/constants/spacing";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { formatListingDate } from "@/src/lib/data/format";
+import { pickerDateToIso } from "@/src/lib/time/oxfordTime";
 import { keyFromDate, parseKey } from "@/src/lib/calendar/monthGrid";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
@@ -22,9 +23,10 @@ function applyDatePart(base: Date, key: string): Date {
 }
 
 function defaultFormalDateTime(): Date {
+  // Tomorrow evening: formals are dinners, and "now" is never the answer.
   const d = new Date();
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
+  d.setDate(d.getDate() + 1);
+  d.setHours(19, 0, 0, 0);
   return d;
 }
 
@@ -50,7 +52,8 @@ export function OxDateTimeField({ value, onChange }: Props) {
   );
   const todayKey = keyFromDate(new Date());
 
-  const display = formatListingDate(value.toISOString());
+  // The value is an Oxford wall clock, not a device-local instant.
+  const display = formatListingDate(pickerDateToIso(value));
 
   function closePicker() {
     setOpen(false);
