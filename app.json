@@ -71,7 +71,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Oxformals checks your contacts to show which friends are already on Oxformals and let you invite the rest. They are compared and not stored."
+          "contactsPermission": "Find friends on Oxformals. Your contacts are checked, not stored."
         }
       ]
     ],
