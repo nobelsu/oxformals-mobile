@@ -28,6 +28,7 @@ function mapDocToUser(doc: Doc<"users">): User {
     instagramHandle: doc.instagramHandle ?? "",
     whatsappPhone: doc.whatsappPhone ?? "",
     dietaryRequirements: doc.dietaryRequirements ?? "",
+    dietaryConsented: doc.dietaryConsentAt !== undefined,
     subject: doc.subject ?? "",
     uiFont: doc.uiFont ?? DEFAULT_UI_FONT,
     ...(doc.avatar ? { avatar: doc.avatar } : {}),
@@ -192,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         instagramHandle?: string;
         whatsappPhone?: string;
         dietaryRequirements?: string;
+        dietaryConsent?: boolean;
         subject?: string;
         uiFont?: User["uiFont"];
         avatar?: User["avatar"] | null;
@@ -210,6 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (patch.dietaryRequirements !== undefined) {
         payload.dietaryRequirements = patch.dietaryRequirements;
+        if (patch.dietaryConsent !== undefined) {
+          payload.dietaryConsent = patch.dietaryConsent;
+        }
       }
       if (patch.subject !== undefined) payload.subject = patch.subject;
       if (patch.uiFont !== undefined) payload.uiFont = patch.uiFont;

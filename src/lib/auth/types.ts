@@ -18,6 +18,10 @@ export type User = {
   instagramHandle?: string;
   whatsappPhone?: string;
   dietaryRequirements?: string;
+  /** They've agreed to share dietary requirements with their formal matches. */
+  dietaryConsented?: boolean;
+  /** Sent when saving the profile: the tick that allows them to be stored. */
+  dietaryConsent?: boolean;
   /** Degree / course subject (optional). */
   subject: string;
   /** App UI font preference; persisted on Convex `users.uiFont`. */

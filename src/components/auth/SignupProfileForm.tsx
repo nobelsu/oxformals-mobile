@@ -585,7 +585,7 @@ export function SignupProfileForm({
         </View>
 
         <View style={profileFieldStyles.field}>
-          <FieldLabel>Phone number</FieldLabel>
+          <FieldLabel>Phone number (optional)</FieldLabel>
           <OxInput
             ref={phoneRef}
             placeholder="+44 7..."

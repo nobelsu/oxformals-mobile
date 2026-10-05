@@ -22,6 +22,7 @@ import type { AvatarSource } from "@/src/lib/auth/types";
 import { pickAvatarImage } from "@/src/lib/avatar/pickAvatarImage";
 import { normalizeCollegeName } from "@/src/lib/data/colleges";
 import { useCallback, useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type Props = {
@@ -52,6 +53,7 @@ export function ProfileEditor({
   const [dietaryRequirementsDraft, setDietaryRequirementsDraft] = useState(
     user?.dietaryRequirements ?? "",
   );
+  const [dietaryConsent, setDietaryConsent] = useState(user?.dietaryConsented ?? false);
   const [subjectDraft, setSubjectDraft] = useState(user?.subject ?? "");
   const [bioDraft, setBioDraft] = useState(user?.bio ?? "");
   const [avatarDraft, setAvatarDraft] = useState<AvatarSource | undefined>(
@@ -74,6 +76,7 @@ export function ProfileEditor({
     setInstagramHandleDraft(user.instagramHandle ?? "");
     setWhatsappPhoneDraft(user.whatsappPhone ?? "");
     setDietaryRequirementsDraft(user.dietaryRequirements ?? "");
+    setDietaryConsent(user.dietaryConsented ?? false);
     setSubjectDraft(user.subject ?? "");
     setBioDraft(user.bio ?? "");
     setAvatarDraft(user.avatar);
@@ -111,6 +114,7 @@ export function ProfileEditor({
     instagramHandleDraft.trim() !== initialInstagramHandle ||
     whatsappPhoneDraft.trim() !== initialWhatsappPhone ||
     dietaryRequirementsDraft.trim() !== initialDietaryRequirements ||
+    dietaryConsent !== (user?.dietaryConsented ?? false) ||
     subjectDraft.trim() !== initialSubject ||
     bioDraft.trim() !== initialBio ||
     JSON.stringify(avatarDraft ?? null) !== JSON.stringify(initialAvatar ?? null);
@@ -129,6 +133,11 @@ export function ProfileEditor({
       // Fellows have no year.
       if (roleDraft.trim() !== "Fellow" && !/^\d+$/.test(year)) {
         setError("Year must be a number, e.g. 2.");
+        return;
+      }
+      // Dietary requirements are health data: they're only kept with a tick.
+      if (dietaryRequirementsDraft.trim() && !dietaryConsent) {
+        setError("Tick the box to share your dietary requirements, or clear them.");
         return;
       }
       // The bio is checked by moderation first, so it has its own save.
@@ -153,6 +162,7 @@ export function ProfileEditor({
         instagramHandle: instagramHandleDraft.trim(),
         whatsappPhone: whatsappPhoneDraft.trim(),
         dietaryRequirements: dietaryRequirementsDraft.trim(),
+        dietaryConsent: dietaryRequirementsDraft.trim() ? dietaryConsent : false,
         subject: subjectDraft.trim(),
         avatar: avatarDraft,
       });
@@ -173,6 +183,7 @@ export function ProfileEditor({
     instagramHandleDraft,
     whatsappPhoneDraft,
     dietaryRequirementsDraft,
+    dietaryConsent,
     subjectDraft,
     avatarDraft,
     bioDraft,
@@ -374,6 +385,23 @@ export function ProfileEditor({
                 onChangeText={setDietaryRequirementsDraft}
                 seed={7}
               />
+              {dietaryRequirementsDraft.trim() ? (
+                <Pressable
+                  onPress={() => setDietaryConsent((on) => !on)}
+                  style={styles.consent}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: dietaryConsent }}
+                >
+                  <Ionicons
+                    name={dietaryConsent ? "checkbox-outline" : "square-outline"}
+                    size={20}
+                    color={colors.ink}
+                  />
+                  <Text style={[oxText, { color: colors.inkMuted, flex: 1, fontSize: 13 }]}>
+                    Share with my formal matches
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
             <View style={[profileFieldStyles.field, profileFieldStyles.halfCol]}>
               <FieldLabel>Subject</FieldLabel>
@@ -427,6 +455,7 @@ export function ProfileEditor({
 }
 
 const styles = StyleSheet.create({
+  consent: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
   cardTitle: {
     fontSize: DISPLAY_SECTION,
     lineHeight: DISPLAY_SECTION * 1.35,

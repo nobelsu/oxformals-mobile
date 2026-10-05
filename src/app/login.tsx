@@ -235,12 +235,15 @@ export default function LoginScreen() {
       !name.trim() ||
       !college.trim() ||
       !year.trim() ||
-      !role.trim() ||
-      !whatsappPhone.trim()
+      !role.trim()
     ) {
-      setError(
-        "Add name, college, year, role, and phone number — it only takes a moment.",
-      );
+      setError("Add your name, college, year and role.");
+      return;
+    }
+    // A phone number is optional; check it only when one is given.
+    const phoneDigits = whatsappPhone.replace(/\D/g, "");
+    if (whatsappPhone.trim() && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
+      setError("That phone number doesn't look right.");
       return;
     }
     const normalizedYear = year.trim();
@@ -258,7 +261,7 @@ export default function LoginScreen() {
         year: normalizedYear,
         role: role.trim(),
         interests,
-        whatsappPhone: whatsappPhone.trim(),
+        whatsappPhone: whatsappPhone.trim() || undefined,
         instagramHandle: instagramHandle.trim() || undefined,
       });
     } catch (e) {
