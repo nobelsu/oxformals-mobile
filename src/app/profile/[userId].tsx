@@ -1,184 +1,41 @@
-import { useAuth } from "@/src/components/auth/useAuth";
-import { CollegeReviewCard } from "@/src/components/reviews/CollegeReviewCard";
-import { BadgeRow } from "@/src/components/profile/BadgeRow";
-import { ProfileInfoCard } from "@/src/components/profile/ProfileInfoCard";
-import { ProfileSocialBar } from "@/src/components/profile/ProfileSocialBar";
-import { ListingCard } from "@/src/components/swap/ListingCard";
-import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
-import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
-import { useOxTheme } from "@/src/contexts/ThemeContext";
-import { DISPLAY_SECTION, SCREEN_PADDING } from "@/src/constants/layout";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useData } from "@/src/components/data/useData";
-import { oxText } from "@/src/constants/oxText";
-import { useQuery } from "convex/react";
+import { useAuth } from "@/src/components/auth/useAuth";
+import { ProfileView } from "@/src/components/profile/ProfileView";
+import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
+import { SCREEN_PADDING } from "@/src/constants/layout";
+import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 
 export default function ProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
   const { colors } = useOxTheme();
   const { user: currentUser } = useAuth();
-  const { getUser } = useData();
 
   const isOwnProfile = !!(currentUser && userId === currentUser.id);
 
-  const profile = useQuery(
-    api.users.getPublicProfile,
-    userId && !isOwnProfile ? { userId: userId as Id<"users"> } : "skip",
-  );
-
-  const publicReviews = useQuery(
-    api.collegeReviews.listPublicReviewsForUser,
-    userId && !isOwnProfile ? { userId: userId as Id<"users"> } : "skip",
-  );
-
+  // Your own profile lives on its tab.
   useEffect(() => {
     if (isOwnProfile) {
       router.dismissTo("/(tabs)/mine");
     }
   }, [isOwnProfile, router]);
 
-  if (isOwnProfile || profile === undefined) {
-    return (
-      <>
-        <Stack.Screen options={{ title: "Profile" }} />
-        <OxLoadingView fill />
-      </>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <>
-        <Stack.Screen options={{ title: "Profile" }} />
-        <View style={{ flex: 1, padding: SCREEN_PADDING }}>
-          <Text style={[oxText, { color: colors.inkMuted }]}>
-            Profile not found.
-          </Text>
-        </View>
-      </>
-    );
-  }
-
-  const uid = profile.user._id;
-  const owner = getUser(uid) ?? {
-    id: uid,
-    email: "",
-    name: profile.user.name ?? "",
-    college: profile.user.college ?? "",
-    year: profile.user.year ?? "",
-    role: profile.user.role ?? "",
-    interests: profile.user.interests ?? [],
-    subject: profile.user.subject ?? "",
-    uiFont: profile.user.uiFont ?? "schoolbell",
-    ...(profile.user.instagramHandle
-      ? { instagramHandle: profile.user.instagramHandle }
-      : {}),
-    ...(profile.user.whatsappPhone
-      ? { whatsappPhone: profile.user.whatsappPhone }
-      : {}),
-    ...(profile.user.avatar ? { avatar: profile.user.avatar } : {}),
-  };
-
   return (
     <>
       <Stack.Screen options={{ title: "Profile" }} />
-      <ScrollView
-        style={[styles.root, { backgroundColor: colors.bg }]}
-        contentContainerStyle={styles.content}
-      >
-        <ProfileInfoCard
-          profile={{
-            id: uid,
-            name: profile.user.name ?? "User",
-            college: profile.user.college,
-            year: profile.user.year,
-            role: profile.user.role,
-            subject: profile.user.subject,
-            interests: profile.user.interests,
-            bio: profile.user.bio,
-            dietaryRequirements: profile.user.dietaryRequirements,
-            instagramHandle: profile.user.instagramHandle,
-            whatsappPhone: profile.user.whatsappPhone,
-            avatar: profile.user.avatar,
-          }}
-        />
-
-        <ProfileSocialBar userId={uid} name={profile.user.name ?? "User"} />
-
-        <BadgeRow userId={uid} />
-
-        <DoodleDivider seed={31} />
-        <Text style={[styles.heading, oxText, { color: colors.ink }]}>
-          Active listings
-        </Text>
-        {profile.listings.length === 0 ? (
-          <Text style={[oxText, { color: colors.inkMuted }]}>
-            No active listings right now.
-          </Text>
-        ) : (
-          profile.listings.map((l) => {
-            const listing = {
-              id: l._id,
-              ownerUserId: l.ownerUserId,
-              college: l.college,
-              dateTime: l.dateTime,
-              groupSize: l.groupSize,
-              seatsAvailable: l.seatsAvailable,
-              members: l.members,
-              year: l.year,
-              role: l.role,
-              message: l.message ?? "",
-              menu: "",
-              listingType: l.listingType ?? "swap",
-              formalType: l.formalType ?? "social",
-              ...(l.price !== undefined ? { price: l.price } : {}),
-              status: l.status,
-              createdAt: Date.now(),
-            };
-            return (
-              <View key={l._id} style={{ marginBottom: 12 }}>
-                <ListingCard
-                  listing={listing}
-                  owner={owner}
-                  variant="compact"
-                  onPress={() => router.push(`/listing/${l._id}`)}
-                />
-              </View>
-            );
-          })
-        )}
-
-        <DoodleDivider seed={47} />
-        <Text style={[styles.heading, oxText, { color: colors.ink }]}>
-          Reviews
-          {publicReviews && publicReviews.length > 0
-            ? ` (${publicReviews.length})`
-            : ""}
-        </Text>
-        {publicReviews === undefined ? (
-          <Text style={[oxText, { color: colors.inkMuted }]}>
-            Loading reviews…
-          </Text>
-        ) : publicReviews.length === 0 ? (
-          <Text style={[oxText, { color: colors.inkMuted }]}>
-            {profile.user.name?.split(" ")[0] ?? "They"} hasn&apos;t posted any
-            public reviews yet.
-          </Text>
-        ) : (
-          <View style={styles.reviewsList}>
-            {publicReviews.map((review) => (
-              <View key={review.id} style={styles.reviewCard}>
-                <CollegeReviewCard review={review} variant="profile" />
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+      {isOwnProfile || !userId ? (
+        <OxLoadingView fill />
+      ) : (
+        <ScrollView
+          style={[styles.root, { backgroundColor: colors.bg }]}
+          contentContainerStyle={styles.content}
+        >
+          <ProfileView userId={userId as Id<"users">} />
+        </ScrollView>
+      )}
     </>
   );
 }
@@ -186,12 +43,4 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: SCREEN_PADDING, paddingBottom: 40 },
-  heading: {
-    fontSize: DISPLAY_SECTION,
-    textTransform: "uppercase",
-    marginBottom: 12,
-    marginTop: 8,
-  },
-  reviewsList: { gap: 12, marginTop: 4 },
-  reviewCard: {},
 });

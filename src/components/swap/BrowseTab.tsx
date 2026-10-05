@@ -7,9 +7,9 @@ import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
 import { DoodleScrollDownButton } from "@/src/components/ui/DoodleScrollDownButton";
 import { OxButton } from "@/src/components/ui/OxButton";
 import { OxInput } from "@/src/components/ui/OxInput";
-import { OxModal } from "@/src/components/ui/OxModal";
 import { OxRefreshControl } from "@/src/components/ui/OxRefreshControl";
 import { OxSpinner } from "@/src/components/ui/OxSpinner";
+import { OxText } from "@/src/components/ui/OxText";
 import { SketchCard } from "@/src/components/ui/SketchCard";
 import { useListFormalModal } from "@/src/components/listing/ListFormalModalProvider";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
@@ -23,9 +23,16 @@ import {
   TAB_SCROLL_EXTRA_BOTTOM,
   tabScreenTitleText,
 } from "@/src/constants/layout";
-import { space, TAP_MIN } from "@/src/constants/spacing";
-import { isoToLocalDateKey } from "@/src/lib/data/format";
-import { ROLE_OPTIONS } from "@/src/lib/data/roles";
+import { TAP_MIN } from "@/src/constants/spacing";
+import {
+  activeFilterSections,
+  browseFilterPredicate,
+  EMPTY_BROWSE_FILTERS,
+  MAX_BROWSE_GUESTS,
+  type BrowseFilters,
+} from "@/src/lib/data/browseFilters";
+import { formatListingDay, isoToLocalDateKey } from "@/src/lib/data/format";
+import { groupListingsByDay } from "@/src/lib/data/groupListingsByDay";
 import type { Listing } from "@/src/lib/data/types";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -42,13 +49,14 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import {
-  BrowseDateCalendar,
-  BROWSE_DATE_CALENDAR_INSTRUCTIONS,
-} from "./BrowseDateCalendar";
+import { BrowseFiltersSheet } from "./BrowseFiltersSheet";
 import { ListingCard } from "./ListingCard";
 
-const MY_FORMALS = "__my_formals__";
+/** The list is flat so it stays one FlatList: a heading row, then that day's cards. */
+type BrowseRow =
+  | { kind: "day"; key: string; label: string }
+  | { kind: "listing"; key: string; listing: Listing };
+
 const BROWSE_COLLEGE_CHIP_LIMIT = 3;
 const HEADER_COLLAPSE_DISTANCE = 72;
 /** Discover title line + marginBottom from styles.discoverTitle */
@@ -133,10 +141,8 @@ export function BrowseTab({ onSignInRequired }: Props) {
     onListFormalRequired: openListFormal,
   });
 
-  const [collegeFilter, setCollegeFilter] = useState<string | null>(null);
-  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  const [filters, setFilters] = useState<BrowseFilters>(EMPTY_BROWSE_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
-  const [pickedCalendarDates, setPickedCalendarDates] = useState<string[]>([]);
   const [filtersModalOpen, setFiltersModalOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pullOffset, setPullOffset] = useState(0);
@@ -144,7 +150,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
   const [searchBarFocused, setSearchBarFocused] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  const listRef = useRef<FlatList<Listing>>(null);
+  const listRef = useRef<FlatList<BrowseRow>>(null);
   const scrollY = useSharedValue(0);
   const searchFocused = useSharedValue(0);
   const discoverMaxHeight = useSharedValue(DISCOVER_SECTION_HEIGHT);
@@ -217,92 +223,99 @@ export function BrowseTab({ onSignInRequired }: Props) {
     overflow: "hidden" as const,
   }));
 
-  const { topBrowseColleges, moreCount } = useMemo(() => {
+  /** Colleges with open listings, most first. */
+  const openColleges = useMemo(() => {
     const counts = new Map<string, number>();
     for (const l of listings) {
       if (l.status !== "active") continue;
       counts.set(l.college, (counts.get(l.college) ?? 0) + 1);
     }
-    const sorted = Array.from(counts.entries()).sort((a, b) => {
-      if (b[1] !== a[1]) return b[1] - a[1];
-      return a[0].localeCompare(b[0]);
-    });
-    return {
-      topBrowseColleges: sorted.slice(0, BROWSE_COLLEGE_CHIP_LIMIT).map(([n]) => n),
-      moreCount: Math.max(0, sorted.length - BROWSE_COLLEGE_CHIP_LIMIT),
-    };
+    return Array.from(counts.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([name]) => name);
   }, [listings]);
 
-  const topBrowseCollegesSet = useMemo(
-    () => new Set(topBrowseColleges),
-    [topBrowseColleges],
+  const showWantToGo = isAuthenticated && wishlist.length > 0;
+  const wantToGoOn = filters.wantToGo && showWantToGo;
+
+  // The top few, plus any picked in the sheet so a pick is never hidden.
+  const chipColleges = useMemo(() => {
+    const top = openColleges.slice(0, BROWSE_COLLEGE_CHIP_LIMIT);
+    return [...top, ...filters.colleges.filter((c) => !top.includes(c))];
+  }, [openColleges, filters.colleges]);
+  const moreCount = openColleges.filter((c) => !chipColleges.includes(c)).length;
+
+  const wishlistSet = useMemo(
+    () => new Set(isAuthenticated ? wishlist : []),
+    [isAuthenticated, wishlist],
   );
 
-  const wishlistSet = useMemo(() => new Set(wishlist), [wishlist]);
+  function toggleCollege(college: string) {
+    setFilters((f) => ({
+      ...f,
+      colleges: f.colleges.includes(college)
+        ? f.colleges.filter((c) => c !== college)
+        : [...f.colleges, college],
+    }));
+  }
 
-  const effectiveCollegeFilter = useMemo(() => {
-    if (collegeFilter === MY_FORMALS && (!isAuthenticated || wishlist.length === 0)) {
-      return null;
-    }
-    if (collegeFilter !== null && collegeFilter !== MY_FORMALS) {
-      return topBrowseCollegesSet.has(collegeFilter) ? collegeFilter : null;
-    }
-    if (collegeFilter === MY_FORMALS) return MY_FORMALS;
-    return null;
-  }, [collegeFilter, isAuthenticated, wishlist.length, topBrowseCollegesSet]);
-
-  const collegeFilteredListings = useMemo(
-    () =>
-      listings
-        .filter((l) => l.status === "active")
-        .filter((l) => Date.parse(l.dateTime) > Date.now())
-        .filter((l) => !user || l.ownerUserId !== user.id)
-        .filter((l) => {
-          if (!effectiveCollegeFilter) return true;
-          if (effectiveCollegeFilter === MY_FORMALS) return wishlistSet.has(l.college);
-          return l.college === effectiveCollegeFilter;
-        })
-        .filter((l) => !roleFilter || l.role === roleFilter),
-    [listings, user, effectiveCollegeFilter, wishlistSet, roleFilter],
-  );
-
-  const browseListings = useMemo(() => {
+  /** Open, upcoming, someone else's, and matching the search box. */
+  const searchedListings = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const dateSet =
-      pickedCalendarDates.length > 0 ? new Set(pickedCalendarDates) : null;
-    return collegeFilteredListings
+    return listings
+      .filter((l) => l.status === "active")
+      .filter((l) => Date.parse(l.dateTime) > Date.now())
+      .filter((l) => !user || l.ownerUserId !== user.id)
       .filter((l) => {
-        if (!dateSet) return true;
-        const key = isoToLocalDateKey(l.dateTime);
-        return dateSet.has(key);
-      })
-      .filter((l) => {
-        if (!q) return true;
+        // No owner, no card: keep it out so a day heading never sits alone.
         const owner = getUser(l.ownerUserId);
-        const parts = [
-          l.college,
-          l.menu,
-          l.message,
-          l.year,
-          l.role,
-          owner?.name ?? "",
-        ];
+        if (!owner) return false;
+        if (!q) return true;
+        const parts = [l.college, l.menu, l.message, l.year, l.role, owner.name];
         return parts.some((p) => (p ?? "").toLowerCase().includes(q));
-      })
-      .sort((a, b) => +new Date(a.dateTime) - +new Date(b.dateTime));
-  }, [collegeFilteredListings, pickedCalendarDates, searchQuery, getUser]);
+      });
+  }, [listings, user, searchQuery, getUser]);
+
+  const listingsFor = useCallback(
+    (f: BrowseFilters) =>
+      searchedListings.filter(
+        browseFilterPredicate(f, {
+          todayKey: isoToLocalDateKey(new Date().toISOString()),
+          dateKeyOf: (l) => isoToLocalDateKey(l.dateTime),
+          wishlist: wishlistSet,
+        }),
+      ),
+    [searchedListings, wishlistSet],
+  );
+  const countFor = useCallback(
+    (f: BrowseFilters) => listingsFor(f).length,
+    [listingsFor],
+  );
+
+  const browseListings = useMemo(() => listingsFor(filters), [listingsFor, filters]);
+
+  const rows = useMemo(() => {
+    const out: BrowseRow[] = [];
+    for (const group of groupListingsByDay(browseListings)) {
+      out.push({
+        kind: "day",
+        key: `day-${group.dateKey}`,
+        label: formatListingDay(group.dateTime),
+      });
+      for (const listing of group.listings) {
+        out.push({ kind: "listing", key: listing.id, listing });
+      }
+    }
+    return out;
+  }, [browseListings]);
 
   const formalCount = browseListings.length;
   const formalCountText = formalCountLabel(formalCount);
 
-  const hasActiveFilters =
-    pickedCalendarDates.length > 0 || roleFilter !== null;
-  const hasCollegeMatches = collegeFilteredListings.length > 0;
-
-  function clearAllFilters() {
-    setPickedCalendarDates([]);
-    setRoleFilter(null);
-  }
+  const hasActiveFilters = activeFilterSections(filters) > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -351,7 +364,7 @@ export function BrowseTab({ onSignInRequired }: Props) {
             </View>
             <OxInput
               seed={BROWSE_SEARCH_SEED}
-              placeholder="Search college, menu, role, host..."
+              placeholder="Search college, menu, host..."
               value={searchQuery}
               onChangeText={setSearchQuery}
               onFocusChange={handleSearchFocusChange}
@@ -429,25 +442,34 @@ export function BrowseTab({ onSignInRequired }: Props) {
           >
             <Chip
               label="All colleges"
-              selected={effectiveCollegeFilter === null}
-              onPress={() => setCollegeFilter(null)}
+              selected={filters.colleges.length === 0 && !wantToGoOn}
+              onPress={() =>
+                setFilters((f) => ({ ...f, colleges: [], wantToGo: false }))
+              }
             />
-            {isAuthenticated && wishlist.length > 0 && (
+            {showWantToGo ? (
               <Chip
-                label="My favourites"
-                selected={effectiveCollegeFilter === MY_FORMALS}
-                onPress={() => setCollegeFilter(MY_FORMALS)}
+                label="Want to go"
+                selected={filters.wantToGo}
+                onPress={() =>
+                  setFilters((f) => ({ ...f, wantToGo: !f.wantToGo }))
+                }
               />
-            )}
-            {topBrowseColleges.map((c) => (
+            ) : null}
+            {chipColleges.map((c) => (
               <Chip
                 key={c}
                 label={c}
-                selected={effectiveCollegeFilter === c}
-                onPress={() => setCollegeFilter(c)}
+                selected={filters.colleges.includes(c)}
+                onPress={() => toggleCollege(c)}
               />
             ))}
-            {moreCount > 0 && <Chip label={`+${moreCount}`} />}
+            {moreCount > 0 ? (
+              <Chip
+                label={`+${moreCount}`}
+                onPress={() => setFiltersModalOpen(true)}
+              />
+            ) : null}
           </View>
         </CollapsibleBrowseSection>
         <Text
@@ -468,24 +490,36 @@ export function BrowseTab({ onSignInRequired }: Props) {
         <Animated.FlatList
           ref={listRef}
           style={styles.listScroll}
-          data={browseListings}
-          keyExtractor={(item) => item.id}
+          data={rows}
+          keyExtractor={(item) => item.key}
           onScroll={onListScroll}
           scrollEventThrottle={16}
           refreshControl={
             <OxRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
           renderItem={({ item }) => {
-            const owner = getUser(item.ownerUserId);
+            if (item.kind === "day") {
+              return (
+                <OxText
+                  style={[styles.dayHeading, { color: colors.ink }]}
+                  accessibilityRole="header"
+                >
+                  {item.label}
+                </OxText>
+              );
+            }
+            const { listing } = item;
+            const owner = getUser(listing.ownerUserId);
             if (!owner) return null;
             return (
               <View style={styles.cardWrap}>
                 <ListingCard
-                  listing={item}
+                  listing={listing}
                   owner={owner}
                   variant="compact"
-                  onPress={() => router.push(`/listing/${item.id}`)}
-                  onRequest={() => onCardRequest(item)}
+                  timeOnly
+                  onPress={() => router.push(`/listing/${listing.id}`)}
+                  onRequest={() => onCardRequest(listing)}
                   disabled={!isAuthenticated}
                   disabledLabel={
                     isAuthenticated ? undefined : "Sign in to request"
@@ -502,13 +536,15 @@ export function BrowseTab({ onSignInRequired }: Props) {
                   { color: colors.ink, fontFamily: FONT_DISPLAY },
                 ]}
               >
-                Nothing here yet
+                No formals
               </Text>
-              <Text style={[styles.empty, { color: colors.inkMuted }]}>
-                {hasCollegeMatches
-                  ? "Nothing matches your filters. Try another college above, open filters to choose dates or role, or clear your search."
-                  : "No open swaps here yet. Try another college or list your own formal."}
-              </Text>
+              {hasActiveFilters ? (
+                <OxButton
+                  title="Clear filters"
+                  variant="secondary"
+                  onPress={() => setFilters(EMPTY_BROWSE_FILTERS)}
+                />
+              ) : null}
             </SketchCard>
           }
           contentContainerStyle={styles.list}
@@ -525,62 +561,16 @@ export function BrowseTab({ onSignInRequired }: Props) {
         ) : null}
       </View>
 
-      <OxModal
+      <BrowseFiltersSheet
         visible={filtersModalOpen}
         onClose={() => setFiltersModalOpen(false)}
-        title="Filters"
-        showCloseButton={false}
-      >
-        <Text
-          style={[styles.modalSectionTitle, { color: colors.ink }]}
-          accessibilityRole="header"
-        >
-          Dates
-        </Text>
-        <Text style={[styles.modalInstructions, { color: colors.inkMuted }]}>
-          {BROWSE_DATE_CALENDAR_INSTRUCTIONS}
-        </Text>
-        <BrowseDateCalendar
-          embedded
-          value={pickedCalendarDates}
-          onChange={setPickedCalendarDates}
-        />
-        <DoodleDivider seed={88} marginVertical={16} />
-        <Text
-          style={[styles.modalSectionTitle, { color: colors.ink }]}
-          accessibilityRole="header"
-        >
-          Role
-        </Text>
-        <View style={styles.roleChips}>
-          <Chip
-            label="All roles"
-            selected={roleFilter === null}
-            onPress={() => setRoleFilter(null)}
-          />
-          {ROLE_OPTIONS.map((role) => (
-            <Chip
-              key={role}
-              label={role}
-              selected={roleFilter === role}
-              onPress={() => setRoleFilter(role)}
-            />
-          ))}
-        </View>
-        {hasActiveFilters ? (
-          <OxButton
-            title="Clear filters"
-            variant="secondary"
-            onPress={clearAllFilters}
-            style={styles.clearFiltersBtn}
-          />
-        ) : null}
-        <OxButton
-          title="Done"
-          onPress={() => setFiltersModalOpen(false)}
-          style={styles.doneBtn}
-        />
-      </OxModal>
+        value={filters}
+        onApply={setFilters}
+        countFor={countFor}
+        colleges={openColleges}
+        showWantToGo={showWantToGo}
+        maxGuests={MAX_BROWSE_GUESTS}
+      />
 
       {modals}
     </View>
@@ -674,18 +664,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   cardWrap: { marginBottom: CARD_GAP },
+  dayHeading: { fontSize: 20, marginTop: 12, marginBottom: 8 },
   emptyCard: { marginTop: 24 },
   emptyTitle: {
     fontSize: 22,
     textTransform: "uppercase",
     textAlign: "center",
     marginBottom: 8,
-  },
-  empty: {
-    textAlign: "center",
-    fontSize: 15,
-    lineHeight: 22,
-    fontFamily: FONT_DISPLAY,
   },
   filterBtn: {
     alignItems: "center",
@@ -698,30 +683,5 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  modalSectionTitle: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 14,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  modalInstructions: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: space[5],
-  },
-  roleChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  clearFiltersBtn: {
-    marginTop: 8,
-  },
-  doneBtn: {
-    marginTop: 16,
   },
 });

@@ -5,8 +5,10 @@ import { FeedCommentsSheet } from "@/src/components/feed/FeedCommentsSheet";
 import { PartyInvites } from "@/src/components/feed/PartyInvites";
 import { PeopleYouMayKnow } from "@/src/components/feed/PeopleYouMayKnow";
 import type { FeedItem, FeedScope } from "@/src/components/feed/types";
+import { WeekFormals } from "@/src/components/feed/WeekFormals";
 import { YourFormalsCard } from "@/src/components/feed/YourFormalsCard";
 import { Chip } from "@/src/components/ui/Chip";
+import { OxButton } from "@/src/components/ui/OxButton";
 import { OxLoadingView } from "@/src/components/ui/OxLoadingView";
 import { OxText } from "@/src/components/ui/OxText";
 import {
@@ -93,6 +95,7 @@ export function FeedTab() {
                 ) : null}
               </Pressable>
             </View>
+            {user ? <WeekFormals /> : null}
             <PartyInvites />
             <YourFormalsCard />
             <View style={styles.scopes}>
@@ -106,6 +109,18 @@ export function FeedTab() {
               ))}
             </View>
             {scope === "following" ? <PeopleYouMayKnow /> : null}
+            {scope === "forYou" && feed?.wishlistEmpty ? (
+              <View style={styles.nudge}>
+                <OxText style={[styles.nudgeText, { color: colors.ink }]}>
+                  Pick colleges you want to go to
+                </OxText>
+                <OxButton
+                  title="Choose"
+                  variant="secondary"
+                  onPress={() => router.push("/colleges")}
+                />
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -141,6 +156,8 @@ const styles = StyleSheet.create({
   icon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   badge: { position: "absolute", top: 7, right: 8, width: 9, height: 9, borderRadius: 5 },
   scopes: { flexDirection: "row", gap: 8 },
+  nudge: { flexDirection: "row", alignItems: "center", gap: 12 },
+  nudgeText: { flex: 1, fontSize: 16, lineHeight: 20 },
   loading: { paddingVertical: 48 },
   empty: {
     fontSize: 16,

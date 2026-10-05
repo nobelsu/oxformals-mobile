@@ -15,7 +15,14 @@ import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { normalizeCollegeName } from "@/src/lib/data/colleges";
 import type { NewListingInput, UpdateListingInput } from "@/src/lib/data/dataClient";
-import { GROUP_SIZES, type GroupSize, type Listing, type ListingType } from "@/src/lib/data/types";
+import { FORMAL_TYPE_LABELS } from "@/src/components/swap/FormalTypeTag";
+import {
+  GROUP_SIZES,
+  type FormalType,
+  type GroupSize,
+  type Listing,
+  type ListingType,
+} from "@/src/lib/data/types";
 import { menuFileLabel } from "@/src/lib/upload/menuFile";
 import { runAfterUIReady } from "@/src/lib/media/openPhotoLibrary";
 import { pickMenuImageFromLibrary } from "@/src/lib/upload/pickMenuImageFromLibrary";
@@ -30,6 +37,8 @@ const LISTING_TYPES: { value: ListingType; label: string }[] = [
   { value: "pay", label: "Pay" },
   { value: "both", label: "Swap or pay" },
 ];
+
+const FORMAL_TYPES: FormalType[] = ["matchmaking", "social", "networking"];
 
 type CreateProps = {
   mode?: "create";
@@ -81,6 +90,9 @@ export function ListFormalForm(props: Props) {
   const [menu, setMenu] = useState(() => initialListing?.menu ?? "");
   const [listingType, setListingType] = useState<ListingType>(
     () => initialListing?.listingType ?? "swap",
+  );
+  const [formalType, setFormalType] = useState<FormalType>(
+    () => initialListing?.formalType ?? "social",
   );
   const [price, setPrice] = useState(() =>
     initialListing ? initialPriceString(initialListing) : "",
@@ -186,6 +198,7 @@ export function ListFormalForm(props: Props) {
         message: message.trim(),
         menu: menu.trim(),
         listingType,
+        formalType,
         ...(menuPdfId ? { menuPdfId } : {}),
         ...(clearMenuPdf ? { clearMenuPdf: true } : {}),
         ...(priceNum !== undefined ? { price: priceNum } : {}),
@@ -225,6 +238,19 @@ export function ListFormalForm(props: Props) {
             />
           );
         })}
+      </View>
+      <Text style={[styles.sectionLabel, oxText, { color: colors.ink }]}>
+        Formal type
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}>
+        {FORMAL_TYPES.map((t) => (
+          <Chip
+            key={t}
+            label={FORMAL_TYPE_LABELS[t]}
+            selected={formalType === t}
+            onPress={() => setFormalType(t)}
+          />
+        ))}
       </View>
       <Text style={[styles.sectionLabel, oxText, { color: colors.ink }]}>
         Listing type

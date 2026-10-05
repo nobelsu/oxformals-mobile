@@ -1,4 +1,6 @@
 import { FeedActions } from "@/src/components/feed/FeedActions";
+import { FeedListingStatus } from "@/src/components/feed/FeedListingStatus";
+import { FeedPhotoViewer } from "@/src/components/feed/FeedPhotoViewer";
 import type {
   FeedAttendedItem,
   FeedItem,
@@ -21,7 +23,7 @@ import { mapListing } from "@/src/lib/data/mapConvex";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 type Props = {
@@ -51,6 +53,7 @@ function attendeeNames(item: FeedAttendedItem): string {
 export const FeedCard = memo(function FeedCard({ item, onOpenComments }: Props) {
   const { colors } = useOxTheme();
   const router = useRouter();
+  const [photo, setPhoto] = useState<number | null>(null);
   const actor = item.kind === "attended" ? item.actors[0] : item.actor;
   const college = item.kind === "listing" ? item.listing.college : item.college;
 
@@ -106,13 +109,27 @@ export const FeedCard = memo(function FeedCard({ item, onOpenComments }: Props) 
           ) : null}
         </View>
         {item.kind === "listing" ? <ListingBody item={item} /> : null}
-        {item.kind === "review" ? <ReviewBody item={item} /> : null}
+        {item.kind === "review" ? (
+          <ReviewBody item={item} onOpenPhoto={setPhoto} />
+        ) : null}
         {item.kind === "attended" ? (
           <OxText style={[styles.meta, { color: colors.inkMuted }]}>
             {formatListingDate(item.dateTime)} · {item.attendeeCount} went
           </OxText>
         ) : null}
       </Pressable>
+
+      {item.kind === "review" ? (
+        <FeedPhotoViewer
+          urls={item.imageUrls}
+          index={photo}
+          onClose={() => setPhoto(null)}
+        />
+      ) : null}
+
+      {item.kind === "listing" ? (
+        <FeedListingStatus listing={mapListing(item.listing)} />
+      ) : null}
 
       {item.commentPreview.length > 0 ? (
         <Pressable onPress={() => onOpenComments(item)} style={styles.preview}>
@@ -160,7 +177,13 @@ function ListingBody({ item }: { item: FeedListingItem }) {
   );
 }
 
-function ReviewBody({ item }: { item: FeedReviewItem }) {
+function ReviewBody({
+  item,
+  onOpenPhoto,
+}: {
+  item: FeedReviewItem;
+  onOpenPhoto: (index: number) => void;
+}) {
   const { colors } = useOxTheme();
   const overall = Math.round(item.ratings.overall);
   return (
@@ -186,14 +209,21 @@ function ReviewBody({ item }: { item: FeedReviewItem }) {
       ) : null}
       {item.imageUrls.length > 0 ? (
         <View style={styles.photos}>
-          {item.imageUrls.slice(0, 3).map((url) => (
-            <Image
+          {item.imageUrls.slice(0, 3).map((url, i) => (
+            <Pressable
               key={url}
-              source={{ uri: url }}
-              style={[styles.photo, { borderColor: colors.ink }]}
-              contentFit="cover"
-              transition={150}
-            />
+              onPress={() => onOpenPhoto(i)}
+              style={styles.photoWrap}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`Photo ${i + 1} of ${item.imageUrls.length}`}
+            >
+              <Image
+                source={{ uri: url }}
+                style={[styles.photo, { borderColor: colors.ink }]}
+                contentFit="cover"
+                transition={150}
+              />
+            </Pressable>
           ))}
         </View>
       ) : null}
@@ -221,7 +251,8 @@ const styles = StyleSheet.create({
   tagRow: { flexDirection: "row", marginTop: 10 },
   stars: { flexDirection: "row", gap: 2, marginTop: 6 },
   photos: { flexDirection: "row", gap: 8, marginTop: 10 },
-  photo: { flex: 1, aspectRatio: 1, borderRadius: 10, borderWidth: 1.5 },
+  photoWrap: { flex: 1 },
+  photo: { aspectRatio: 1, borderRadius: 10, borderWidth: 1.5 },
   preview: { marginTop: 12, gap: 2 },
   previewLine: { fontSize: 13, lineHeight: 17 },
 });

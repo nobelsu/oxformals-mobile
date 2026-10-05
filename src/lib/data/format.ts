@@ -26,16 +26,21 @@ export function formatListingStatusLabel(
   }
 }
 
-// "Thu 8 May · 7:15pm", in Oxford time.
-export function formatListingDate(iso: string): string {
-  const d = new Date(iso);
-  const day = new Intl.DateTimeFormat("en-GB", {
+// "Thu 8 May", in Oxford time.
+export function formatListingDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: OXFORD_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
-  }).format(d);
-  return `${day} · ${formatListingTime(iso)}`;
+  })
+    .format(new Date(iso))
+    .replace(",", "");
+}
+
+// "Thu 8 May · 7:15pm", in Oxford time.
+export function formatListingDate(iso: string): string {
+  return `${formatListingDay(iso)} · ${formatListingTime(iso)}`;
 }
 
 // "7:15pm" or "7pm", in Oxford time.

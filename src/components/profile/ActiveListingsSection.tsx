@@ -2,15 +2,16 @@ import { useAuth } from "@/src/components/auth/useAuth";
 import { useData } from "@/src/components/data/useData";
 import { useListFormalModal } from "@/src/components/listing/ListFormalModalProvider";
 import { MyListingCard } from "@/src/components/swap/MyListingCard";
-import { DoodleAddButton } from "@/src/components/ui/DoodleAddButton";
+import { OxButton } from "@/src/components/ui/OxButton";
+import { OxText } from "@/src/components/ui/OxText";
 import { useOxTheme } from "@/src/contexts/ThemeContext";
-import { oxText } from "@/src/constants/oxText";
-import { CARD_GAP, tabScreenTitleText } from "@/src/constants/layout";
+import { CARD_GAP } from "@/src/constants/layout";
 import { space } from "@/src/constants/spacing";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
+/** Your active listings, as the profile's Listings tab. */
 export function ActiveListingsSection() {
   const router = useRouter();
   const { colors } = useOxTheme();
@@ -44,21 +45,13 @@ export function ActiveListingsSection() {
 
   return (
     <>
-      <View style={styles.header}>
-        <Text style={[tabScreenTitleText, { color: colors.ink }]}>
-          Active listings
-        </Text>
-        <DoodleAddButton
-          seed={18}
-          accessibilityLabel="List a formal"
-          onPress={openListFormal}
-        />
-      </View>
-
       {myActiveListings.length === 0 ? (
-        <Text style={[oxText, { color: colors.inkMuted }]}>
-          No active listings.
-        </Text>
+        <View style={styles.empty}>
+          <OxText style={[styles.emptyText, { color: colors.inkMuted }]}>
+            No active listings
+          </OxText>
+          <OxButton title="List a formal" variant="secondary" onPress={openListFormal} />
+        </View>
       ) : (
         <View style={styles.cardList}>
           {myActiveListings.map((listing) => {
@@ -85,12 +78,7 @@ export function ActiveListingsSection() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: space[6],
-    marginBottom: 12,
-  },
+  empty: { alignItems: "center", gap: space[4], paddingVertical: space[6] },
+  emptyText: { fontSize: 16 },
   cardList: { gap: CARD_GAP },
 });

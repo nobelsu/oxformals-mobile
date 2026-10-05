@@ -12,6 +12,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useNowMs } from "@/src/lib/hooks/useNowMs";
 import { useQuery } from "convex/react";
 import { ReportSheet } from "@/src/components/report/ReportSheet";
+import { CreditDisputeLink } from "@/src/components/swap/CreditDisputeLink";
 import { ListingMembership } from "@/src/components/swap/ListingMembership";
 import { useListingRequest } from "@/src/components/swap/listingRequestFlow";
 import {
@@ -35,9 +36,9 @@ import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { OxText } from "@/src/components/ui/OxText";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { WEB_ORIGIN } from "@/src/lib/webOrigin";
+import { listingShareTarget, openShareMenu } from "@/src/lib/share/share";
 import { Ionicons } from "@expo/vector-icons";
-import { Alert, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ListingDetailScreen() {
@@ -155,16 +156,7 @@ export default function ListingDetailScreen() {
   }
 
   function shareListing() {
-    if (!listing) return;
-    const day = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/London",
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    }).format(new Date(listing.dateTime));
-    Share.share({
-      message: `Formal at ${listing.college} on ${day}. Want to come?\n${WEB_ORIGIN}/?listing=${listing.id}`,
-    }).catch(() => {});
+    if (listing) openShareMenu(listingShareTarget(listing));
   }
 
   return (
@@ -292,6 +284,10 @@ export default function ListingDetailScreen() {
             viewerId={user.id}
             isPast={listingIsPast(listing.dateTime, nowMs)}
           />
+        ) : null}
+
+        {isMember && !isOwner && listingIsPast(listing.dateTime, nowMs) ? (
+          <CreditDisputeLink listingId={listing.id} />
         ) : null}
 
         {canRequest && (

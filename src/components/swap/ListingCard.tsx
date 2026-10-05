@@ -8,6 +8,7 @@ import type { User } from "@/src/lib/auth/types";
 import {
   formatListingDate,
   formatListingSeatsLabel,
+  formatListingTime,
   formatPrice,
   formatYearLabel,
 } from "@/src/lib/data/format";
@@ -16,6 +17,7 @@ import type { Listing } from "@/src/lib/data/types";
 import { FONT_DISPLAY } from "@/src/constants/fonts";
 import { OxText } from "@/src/components/ui/OxText";
 import { Pressable, StyleSheet, View } from "react-native";
+import { FormalTypeTag } from "./FormalTypeTag";
 import { ListingMenu } from "./ListingMenu";
 
 type Props = {
@@ -30,6 +32,8 @@ type Props = {
   hideInterests?: boolean;
   hideFooter?: boolean;
   requestLabel?: string;
+  /** Show only the time: the day is stated by a heading above the card. */
+  timeOnly?: boolean;
 };
 
 function seedFrom(id: string): number {
@@ -50,6 +54,7 @@ export function ListingCard({
   hideInterests,
   hideFooter,
   requestLabel,
+  timeOnly,
 }: Props) {
   const { colors } = useOxTheme();
   const isCompact = variant === "compact";
@@ -83,11 +88,17 @@ export function ListingCard({
       listing.seatsAvailable === 0);
 
   const metaParts = [
-    formatListingDate(listing.dateTime),
+    timeOnly
+      ? formatListingTime(listing.dateTime)
+      : formatListingDate(listing.dateTime),
     `Group of ${listing.groupSize}`,
     !footerShowsStatusBadge ? seatsLabel : null,
     listing.price !== undefined ? formatPrice(listing.price) : null,
   ].filter(Boolean) as string[];
+
+  const menuPreview = isCompact
+    ? listing.menu.replace(/\s+/g, " ").trim()
+    : "";
 
   const footer = showFooter ? (
     <View style={styles.footer}>
@@ -132,9 +143,12 @@ export function ListingCard({
         <ListingTypeTag listingType={listing.listingType} />
       </View>
 
-      <OxText style={[styles.meta, { color: colors.inkMuted }]}>
-        {metaParts.join(" · ")}
-      </OxText>
+      <View style={styles.metaRow}>
+        <OxText style={[styles.meta, { color: colors.inkMuted }]}>
+          {metaParts.join(" · ")}
+        </OxText>
+        <FormalTypeTag formalType={listing.formalType} />
+      </View>
 
       <View style={styles.ownerRow}>
         <Avatar avatar={owner.avatar} name={owner.name} size={48} />
@@ -170,6 +184,15 @@ export function ListingCard({
           numberOfLines={undefined}
         />
       )}
+
+      {menuPreview ? (
+        <OxText
+          style={[styles.menuPreview, { color: colors.ink }]}
+          numberOfLines={1}
+        >
+          {`On the menu: ${menuPreview}`}
+        </OxText>
+      ) : null}
 
       {listing.message ? (
         <OxText
@@ -254,7 +277,16 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     lineHeight: 30,
   },
-  meta: { fontSize: 13, marginBottom: 12 },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    columnGap: 10,
+    rowGap: 4,
+    marginBottom: 12,
+  },
+  meta: { fontSize: 13 },
+  menuPreview: { fontSize: 14, marginTop: 4 },
   ownerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
   ownerText: { flex: 1, minWidth: 0 },
   ownerName: { fontSize: 18 },

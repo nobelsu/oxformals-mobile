@@ -200,6 +200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         message: input.message,
         menu: input.menu,
         listingType: input.listingType,
+        formalType: input.formalType,
         ...(input.menuPdfId !== undefined
           ? { menuPdfId: input.menuPdfId as Id<"_storage"> }
           : {}),
@@ -218,7 +219,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         message: input.message,
         menu: input.menu,
         listingType: input.listingType,
-        formalType: "social",
+        formalType: input.formalType,
         ...(input.price !== undefined ? { price: input.price } : {}),
         status: "active",
         createdAt: Date.now(),
@@ -379,6 +380,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               ? { menuPdfId: patch.menuPdfId as Id<"_storage"> }
               : {}),
           listingType: patch.listingType,
+          formalType: patch.formalType,
           ...(patch.price !== undefined ? { price: patch.price } : {}),
         });
       } catch (e) {

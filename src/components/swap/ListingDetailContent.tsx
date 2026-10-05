@@ -1,6 +1,5 @@
 import { useAuth } from "@/src/components/auth/useAuth";
 import { Avatar } from "@/src/components/ui/Avatar";
-import { Chip } from "@/src/components/ui/Chip";
 import { DoodleDivider } from "@/src/components/ui/DoodleDivider";
 import { ListingTypeTag } from "@/src/components/ui/ListingTypeTag";
 import { OxText } from "@/src/components/ui/OxText";
@@ -18,6 +17,7 @@ import { openProfile } from "@/src/lib/profile/navigation";
 import type { Listing } from "@/src/lib/data/types";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
+import { FormalTypeTag } from "./FormalTypeTag";
 import { hasListingMenu, ListingMenu } from "./ListingMenu";
 
 type Props = {
@@ -63,7 +63,7 @@ export function ListingDetailContent({
 
   const showMenu = hasListingMenu(listing.menu, listing.menuPdfUrl);
   const showMessage = !!listing.message?.trim();
-  const showInterests = owner.interests.length > 0;
+  const bio = owner.bio?.trim();
   const showMembers = memberUsers.length > 0;
 
   return (
@@ -87,6 +87,7 @@ export function ListingDetailContent({
 
       <View style={styles.headerTags}>
         <ListingTypeTag listingType={listing.listingType} />
+        <FormalTypeTag formalType={listing.formalType} />
         {badge ? (
           <View style={[styles.statusChip, { borderColor: colors.ink }]}>
             <OxText style={[styles.statusText, { color: colors.ink }]}>
@@ -113,25 +114,11 @@ export function ListingDetailContent({
                 .filter(Boolean)
                 .join(" · ")}
           </OxText>
+          {bio ? (
+            <OxText style={[styles.bio, { color: colors.ink }]}>{bio}</OxText>
+          ) : null}
         </View>
       </Pressable>
-
-      {showInterests ? (
-        <View style={styles.section}>
-          <OxText style={[styles.sectionLabel, { color: colors.inkSoft }]}>
-            Interests
-          </OxText>
-          <View style={styles.chips}>
-            {owner.interests.map((tag) => (
-              <Chip key={tag} label={tag} />
-            ))}
-          </View>
-        </View>
-      ) : null}
-
-      {(showMenu || showMessage) && showInterests ? (
-        <DoodleDivider seed={listing.id.length + 7} marginVertical={SECTION_GAP / 2} />
-      ) : null}
 
       {showMenu ? (
         <View style={styles.section}>
@@ -158,7 +145,7 @@ export function ListingDetailContent({
         </View>
       ) : null}
 
-      {showMembers && (showInterests || showMenu || showMessage) ? (
+      {showMembers && (showMenu || showMessage) ? (
         <DoodleDivider seed={listing.id.length + 3} marginVertical={SECTION_GAP / 2} />
       ) : null}
 
@@ -241,10 +228,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
+  bio: {
+    fontSize: 15,
+    lineHeight: 20,
+    marginTop: 6,
   },
   memberAvatars: {
     flexDirection: "row",

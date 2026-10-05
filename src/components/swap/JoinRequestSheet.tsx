@@ -401,7 +401,7 @@ export function JoinRequestSheet({
           ) : null}
           {newPeople > 0 ? (
             <OxText style={[styles.hint, { color: colors.inkMuted }]}>
-              You'll get a link to send them.
+              You&apos;ll get a link to send them.
             </OxText>
           ) : null}
         </View>

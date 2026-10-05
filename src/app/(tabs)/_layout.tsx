@@ -6,6 +6,7 @@ import {
   ListFormalModalProvider,
   useListFormalModal,
 } from "@/src/components/listing/ListFormalModalProvider";
+import { BadgeCelebration } from "@/src/components/profile/BadgeCelebration";
 import { CreateTabBarButton } from "@/src/components/ui/CreateTabBarButton";
 import { TabBarIcon } from "@/src/components/ui/TabBarIcon";
 import { Redirect, Tabs } from "expo-router";
@@ -44,6 +45,7 @@ export default function TabsLayout() {
   return (
     <ListFormalModalProvider>
       <TabsNavigator />
+      <BadgeCelebration />
     </ListFormalModalProvider>
   );
 }

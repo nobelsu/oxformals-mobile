@@ -3,7 +3,7 @@ import type { Listing } from "./types";
 /** Fields collected in the list-a-formal form (profile supplies the rest). */
 export type NewListingInput = Pick<
   Listing,
-  "dateTime" | "groupSize" | "message" | "menu" | "listingType"
+  "dateTime" | "groupSize" | "message" | "menu" | "listingType" | "formalType"
 > & {
   price?: number;
   menuPdfId?: string;

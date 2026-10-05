@@ -13,13 +13,15 @@ export function notificationHref(url: unknown): string | null {
   const listing = params.get("listing");
   if (listing) return `/listing/${listing}`;
 
-  if (/^\/(listing|profile|chat)\/[^/]+$/.test(path)) return path;
+  if (/^\/(listing|profile|chat|college|i|s)\/[^/]+$/.test(path)) return path;
+  if (path === "/settings" || path.startsWith("/settings/")) return "/settings";
 
   if (path === "/") {
     const tab = params.get("tab");
     if (tab === "browse") return "/(tabs)/browse";
     if (tab === "mine") return "/(tabs)/mine";
     if (tab === "chats") return "/(tabs)/chats";
+    if (tab === "colleges") return "/colleges";
     return "/(tabs)/feed";
   }
   return "/(tabs)/feed";

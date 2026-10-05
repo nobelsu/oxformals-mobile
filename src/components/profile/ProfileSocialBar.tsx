@@ -17,14 +17,7 @@ type Props = {
   name: string;
 };
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-/**
- * Follow, message and block for someone else's profile, with their follower
- * counts and a note when the account is private or blocked.
- */
+/** Follow, message, report and block for someone else's profile. */
 export function ProfileSocialBar({ userId, name }: Props) {
   const { colors } = useOxTheme();
   const router = useRouter();
@@ -108,13 +101,7 @@ export function ProfileSocialBar({ userId, name }: Props) {
           : "Follow";
 
   return (
-    <View style={styles.wrap}>
-      <OxText style={[styles.counts, { color: colors.inkMuted }]}>
-        {plural(state.followers, "follower", "followers")} · {state.followingCount}{" "}
-        following
-        {state.followsYou ? " · Follows you" : ""}
-      </OxText>
-
+    <View>
       {blocked ? (
         <View style={styles.row}>
           <OxText style={[styles.note, { color: colors.inkMuted }]}>
@@ -184,25 +171,13 @@ export function ProfileSocialBar({ userId, name }: Props) {
         subject={firstName}
         onClose={() => setReporting(false)}
       />
-
-      {!blocked && state.isPrivate && !state.canSeeActivity ? (
-        <View style={styles.private}>
-          <Ionicons name="lock-closed-outline" size={18} color={colors.inkMuted} />
-          <OxText style={[styles.note, { color: colors.inkMuted }]}>
-            This account is private.
-          </OxText>
-        </View>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 16, gap: 12 },
-  counts: { fontSize: 15, textAlign: "center" },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   grow: { flex: 1 },
   more: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
   note: { fontSize: 15, lineHeight: 20, flex: 1 },
-  private: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
 });
