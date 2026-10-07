@@ -72,6 +72,7 @@ import type * as roles from "../roles.js";
 import type * as seatLinks from "../seatLinks.js";
 import type * as seats from "../seats.js";
 import type * as share from "../share.js";
+import type * as siteStats from "../siteStats.js";
 import type * as storage from "../storage.js";
 import type * as swapLinks from "../swapLinks.js";
 import type * as uiFont from "../uiFont.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   seatLinks: typeof seatLinks;
   seats: typeof seats;
   share: typeof share;
+  siteStats: typeof siteStats;
   storage: typeof storage;
   swapLinks: typeof swapLinks;
   uiFont: typeof uiFont;

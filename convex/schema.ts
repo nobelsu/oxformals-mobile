@@ -515,4 +515,10 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_requestId", ["requestId"]),
+  /** One row: the landing page's counts, refreshed daily (convex/siteStats.ts). */
+  siteStats: defineTable({
+    formals: v.number(),
+    students: v.number(),
+    updatedAt: v.number(),
+  }),
 });

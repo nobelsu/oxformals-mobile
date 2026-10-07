@@ -40,4 +40,11 @@ crons.cron(
   {},
 );
 
+crons.cron(
+  "refresh landing stats",
+  "15 3 * * *",
+  internal.siteStats.recompute,
+  {},
+);
+
 export default crons;
