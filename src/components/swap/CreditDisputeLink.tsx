@@ -20,7 +20,7 @@ export function CreditDisputeLink({ listingId }: { listingId: string }) {
   if (holds.disputed > 0) {
     return (
       <OxText style={[styles.text, { color: colors.inkMuted }]}>
-        Reported. We&apos;ll sort out your seat.
+        Reported. We&apos;ll sort out your spoon.
       </OxText>
     );
   }

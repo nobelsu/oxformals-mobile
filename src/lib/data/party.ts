@@ -41,7 +41,7 @@ export function paymentSummary(
   const n = (m: string) => methods.filter((x) => x === m).length;
   return [
     n("swap") ? `${n("swap")} swap seat${n("swap") === 1 ? "" : "s"}` : null,
-    n("credit") ? `${n("credit")} earned seat${n("credit") === 1 ? "" : "s"}` : null,
+    n("credit") ? `${n("credit")} spoon${n("credit") === 1 ? "" : "s"}` : null,
     n("pay") ? (price !== undefined ? `£${price * n("pay")}` : `${n("pay")} paid`) : null,
   ]
     .filter(Boolean)

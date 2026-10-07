@@ -84,7 +84,7 @@ export async function holdSeatCredits(
       const payer = await ctx.db.get(payerId);
       const name = payer?.name?.split(" ")[0] ?? "They";
       throw new ConvexError(
-        `${name} doesn't have enough seats for this any more (${balance} of ${seats}).`,
+        `${name} doesn't have enough spoons for this any more (${balance} of ${seats}).`,
       );
     }
   }
@@ -232,7 +232,7 @@ export const reportFormalDidntHappen = mutation({
     const listing = await ctx.db.get(listingId);
     if (listing && !listingIsPast(listing.dateTime, Date.now())) {
       throw new ConvexError(
-        "This formal hasn't happened yet. If you can't go, leave the group and your seat comes back.",
+        "This formal hasn't happened yet. If you can't go, leave the group and your spoon comes back.",
       );
     }
     const holds = await ctx.db
@@ -243,7 +243,7 @@ export const reportFormalDidntHappen = mutation({
       (h) => h.payerId === userId && h.status === "held",
     );
     if (mine.length === 0) {
-      throw new ConvexError("There are no seats waiting to be paid for this formal.");
+      throw new ConvexError("There are no spoons waiting to be paid for this formal.");
     }
     for (const hold of mine) {
       await ctx.db.patch(hold._id, { status: "disputed" });

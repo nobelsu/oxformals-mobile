@@ -169,7 +169,7 @@ export function JoinRequestSheet({
         : cashSeats > 0 && !allowsPay
           ? "This listing doesn't take cash."
           : yourCredits > balance
-            ? `Needs ${yourCredits} of your seats. You have ${balance}.`
+            ? `Needs ${yourCredits} spoons. You have ${balance}.`
             : null;
   const ready = credits !== undefined && problem === null;
 
@@ -233,17 +233,17 @@ export function JoinRequestSheet({
     out.push({
       payer: "you",
       method: "credit",
-      label: other ? "You cover: 1 of your seats" : "1 of your seats",
+      label: other ? "You cover: 1 spoon" : "1 of your spoons",
     });
     if (allowsPay) {
       out.push({ payer: "you", method: "pay", label: other ? `You cover: ${cash}` : cash });
     }
     if (seat.kind === "friend") {
-      out.push({ payer: "them", method: "credit", label: "They use their own seat" });
+      out.push({ payer: "them", method: "credit", label: "They pay: 1 spoon" });
       if (allowsPay) out.push({ payer: "them", method: "pay", label: `They pay: ${cash}` });
     }
     if (seat.kind === "link") {
-      out.push({ payer: "them", method: "credit", label: "They use their own seat" });
+      out.push({ payer: "them", method: "credit", label: "They pay: their own spoon" });
     }
     return out;
   }
@@ -258,7 +258,7 @@ export function JoinRequestSheet({
   const summary = [
     count(seats, "seat"),
     swapSeats > 0 ? count(swapSeats, "swap seat") : null,
-    yourCredits > 0 ? `using ${yourCredits} of yours` : null,
+    yourCredits > 0 ? count(yourCredits, "spoon") : null,
     yourCash > 0 && target.price !== undefined ? formatPrice(target.price * yourCash) : null,
   ]
     .filter(Boolean)
@@ -371,15 +371,15 @@ export function JoinRequestSheet({
             selected={baseMethod === "credit"}
             disabled={!canCreditBase}
             onSelect={() => setPicked("credit")}
-            title="Use a seat"
+            title="Spoon"
             detail={
               credits === undefined
-                ? "Checking your seats…"
+                ? "Checking your spoons…"
                 : canCreditBase
-                  ? `Uses ${coveredSeats} · you have ${balance}`
+                  ? `Use ${count(coveredSeats, "spoon")} · you have ${balance}`
                   : balance === 0
                     ? "Host a guest to earn one"
-                    : `Needs ${coveredSeats} · you have ${balance}`
+                    : `Needs ${coveredSeats} spoons · you have ${balance}`
             }
           />
           {allowsPay ? (
@@ -401,8 +401,8 @@ export function JoinRequestSheet({
           {friendIds.length > 0 ? (
             <OxText style={[styles.hint, { color: colors.inkMuted }]}>
               {friendIds.length === 1
-                ? `${friendName(friendIds[0])} uses their own seat.`
-                : "Friends use their own seats."}
+                ? `${friendName(friendIds[0])} uses their own spoon.`
+                : "Friends use their own spoons."}
             </OxText>
           ) : null}
           {newPeople > 0 ? (

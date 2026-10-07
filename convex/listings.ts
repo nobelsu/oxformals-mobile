@@ -489,7 +489,7 @@ export const createRequest = mutation({
     }
     for (const l of links) {
       if (l.paysOwn && l.method !== "credit") {
-        throw new ConvexError("Someone new can only cover themselves with their own seat.");
+        throw new ConvexError("Someone new can only pay for themselves with a spoon.");
       }
     }
     if (args.guestMethods && args.guestMethods.length !== guests) {
@@ -511,7 +511,7 @@ export const createRequest = mutation({
         throw new ConvexError(`${friend?.name?.split(" ")[0] ?? "They"}'re already going.`);
       }
       if (f.paysOwn && f.method === "swap") {
-        throw new ConvexError("Friends paying for themselves can use a seat or cash.");
+        throw new ConvexError("Friends paying for themselves can use a spoon or cash.");
       }
     }
     const now = Date.now();
@@ -591,8 +591,8 @@ export const createRequest = mutation({
       if (balance < myCreditSeats) {
         throw new ConvexError(
           balance === 0
-            ? "You don't have a seat to use. Host a guest at your college's formal to earn one."
-            : `That needs ${myCreditSeats} of your seats and you have ${balance}.`,
+            ? "You don't have any spoons. Host a guest at your college's formal to earn one."
+            : `That needs ${myCreditSeats} spoons and you have ${balance}.`,
         );
       }
     }

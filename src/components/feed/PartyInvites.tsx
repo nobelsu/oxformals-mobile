@@ -37,7 +37,7 @@ export function PartyInvites() {
         const from = inv.from.name?.split(" ")[0] ?? "A friend";
         const cost = inv.paysOwn
           ? inv.method === "credit"
-            ? "Uses 1 of your seats"
+            ? "You pay 1 spoon"
             : inv.price !== null
               ? `You pay ${formatPrice(inv.price)}`
               : "You pay the host"

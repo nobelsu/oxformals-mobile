@@ -146,8 +146,8 @@ export const getNewRequestEmailPayload = internalQuery({
     let tag: string;
     let detail = "";
     if (requestType === "credit") {
-      tag = "Seat";
-      detail = "You earn a seat when they come.";
+      tag = "Spoon";
+      detail = "You earn a spoon when they come.";
     } else if (requestType === "pay") {
       tag =
         targetListing.price !== undefined
@@ -873,9 +873,9 @@ export function creditDisputeEmail(p: {
   listingId: string;
 }): EmailContent {
   return {
-    eyebrow: "Seat dispute",
+    eyebrow: "Spoon dispute",
     heading: "A formal was reported as not happening",
-    body: `${p.reporter} says ${p.formal} (hosted by ${p.host}) didn't happen, and used ${p.credits} seat${p.credits === 1 ? "" : "s"} for it. The payout is on hold.`,
+    body: `${p.reporter} says ${p.formal} (hosted by ${p.host}) didn't happen, and paid ${p.credits} spoon${p.credits === 1 ? "" : "s"} for it. The payout is on hold.`,
     cta: { href: listingBrowseUrl(p.listingId), label: "View listing" },
     note: `Settle each hold: npx convex run --prod credits:resolveDispute '{"holdId":"…","outcome":"refund"}' (or "payHost"). Listing ${p.listingId}.`,
   };

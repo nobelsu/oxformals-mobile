@@ -24,7 +24,7 @@ import { mapListing } from "@/src/lib/data/mapConvex";
 import { formatYearRole } from "@/src/lib/data/roles";
 import { errorMessage } from "@/src/lib/errorMessage";
 import { WEB_ORIGIN } from "@/src/lib/webOrigin";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
@@ -297,9 +297,12 @@ export function ProfileView({ userId }: { userId: Id<"users"> }) {
           );
         })}
         {isSelf && credits ? (
-          <OxText style={[styles.credits, { color: colors.inkMuted }]}>
-            {credits.balance} seat{credits.balance === 1 ? "" : "s"} to use
-          </OxText>
+          <View style={styles.credits}>
+            <MaterialCommunityIcons name="silverware-spoon" size={16} color={colors.inkMuted} />
+            <OxText style={[styles.creditsText, { color: colors.inkMuted }]}>
+              {credits.balance} spoon{credits.balance === 1 ? "" : "s"}
+            </OxText>
+          </View>
         ) : null}
       </View>
 
@@ -378,6 +381,7 @@ const styles = StyleSheet.create({
   },
   tab: { paddingVertical: space[2], borderBottomWidth: 2.5, marginBottom: -1 },
   tabLabel: { fontSize: 18 },
-  credits: { fontSize: 15, marginLeft: "auto" },
+  credits: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" },
+  creditsText: { fontSize: 15 },
   listings: { gap: CARD_GAP },
 });

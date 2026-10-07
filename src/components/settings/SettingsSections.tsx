@@ -11,7 +11,7 @@ const TOPICS = [
   ["bookings", "Bookings", "Requests and replies"],
   ["invites", "Group invites", ""],
   ["social", "Social", "New followers"],
-  ["credits", "Seats and reminders", ""],
+  ["credits", "Spoons and reminders", ""],
 ] as const;
 
 const CHANNELS = [

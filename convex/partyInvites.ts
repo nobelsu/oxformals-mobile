@@ -38,7 +38,7 @@ export const respondToPartyInvite = mutation({
     if (response === "in" && seat.payerId === userId && seat.method === "credit") {
       if ((await creditBalance(ctx, userId)) < 1) {
         throw new ConvexError(
-          "You don't have a seat to use for this. Host a guest to earn one, or ask them to cover you.",
+          "You don't have a spoon for this. Host a guest to earn one, or ask them to cover you.",
         );
       }
     }
