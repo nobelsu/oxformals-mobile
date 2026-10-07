@@ -288,7 +288,7 @@ export function ChatComposer({
         <MentionComposer
           ref={composerRef}
           defaultMentionUsers={defaultMentionUsers}
-          placeholder="@ to mention someone"
+          placeholder="Message"
           onBodyChange={setDraftBody}
           onEmptyChange={setEditorEmpty}
           wrapperStyle={styles.inputWrap}

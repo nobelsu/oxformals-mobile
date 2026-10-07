@@ -60,7 +60,7 @@ export const MentionComposer = forwardRef<MentionComposerHandle, Props>(
     {
       defaultMentionUsers = [],
       disabled = false,
-      placeholder = "@ to mention someone",
+      placeholder = "Message",
       onBodyChange,
       onEmptyChange,
       wrapperStyle,
