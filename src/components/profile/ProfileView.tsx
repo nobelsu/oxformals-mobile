@@ -298,7 +298,7 @@ export function ProfileView({ userId }: { userId: Id<"users"> }) {
         })}
         {isSelf && credits ? (
           <OxText style={[styles.credits, { color: colors.inkMuted }]}>
-            {credits.balance} credit{credits.balance === 1 ? "" : "s"}
+            {credits.balance} seat{credits.balance === 1 ? "" : "s"} to use
           </OxText>
         ) : null}
       </View>

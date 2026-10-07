@@ -57,6 +57,7 @@ import type * as notificationKinds from "../notificationKinds.js";
 import type * as notificationPrefs from "../notificationPrefs.js";
 import type * as notifications from "../notifications.js";
 import type * as notify from "../notify.js";
+import type * as outboundSwitch from "../outboundSwitch.js";
 import type * as partyInvites from "../partyInvites.js";
 import type * as password from "../password.js";
 import type * as peopleSearch from "../peopleSearch.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   notificationPrefs: typeof notificationPrefs;
   notifications: typeof notifications;
   notify: typeof notify;
+  outboundSwitch: typeof outboundSwitch;
   partyInvites: typeof partyInvites;
   password: typeof password;
   peopleSearch: typeof peopleSearch;

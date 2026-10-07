@@ -1,5 +1,6 @@
 import { internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
+import { outboundDisabled } from "./outboundSwitch";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -22,7 +23,7 @@ export async function deliverExpoPushMessages(
   ctx: ActionCtx,
   messages: PushMessage[],
 ): Promise<void> {
-  if (messages.length === 0) return;
+  if (messages.length === 0 || outboundDisabled()) return;
 
   const response = await fetch(EXPO_PUSH_URL, {
     method: "POST",

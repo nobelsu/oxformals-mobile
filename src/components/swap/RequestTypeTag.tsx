@@ -11,7 +11,7 @@ type Props = {
 const LABELS: Record<RequestType, string> = {
   swap: "Swap",
   pay: "Pay",
-  credit: "Credit",
+  credit: "Seat",
 };
 
 export function RequestTypeTag({ requestType }: Props) {

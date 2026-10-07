@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { Resend as ResendAPI } from "resend";
+import { outboundDisabled } from "./outboundSwitch";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalQuery } from "./_generated/server";
@@ -80,6 +81,7 @@ async function sendEmail(
   subject: string,
   content: EmailContent,
 ): Promise<void> {
+  if (outboundDisabled()) return;
   const apiKey = process.env.AUTH_RESEND_KEY;
   if (!apiKey) {
     console.error(`${label}: AUTH_RESEND_KEY is not set`);
@@ -144,8 +146,8 @@ export const getNewRequestEmailPayload = internalQuery({
     let tag: string;
     let detail = "";
     if (requestType === "credit") {
-      tag = "Credit";
-      detail = "You earn a credit when they come.";
+      tag = "Seat";
+      detail = "You earn a seat when they come.";
     } else if (requestType === "pay") {
       tag =
         targetListing.price !== undefined
@@ -871,9 +873,9 @@ export function creditDisputeEmail(p: {
   listingId: string;
 }): EmailContent {
   return {
-    eyebrow: "Credit dispute",
+    eyebrow: "Seat dispute",
     heading: "A formal was reported as not happening",
-    body: `${p.reporter} says ${p.formal} (hosted by ${p.host}) didn't happen, and paid ${p.credits} credit${p.credits === 1 ? "" : "s"} for it. The payout is on hold.`,
+    body: `${p.reporter} says ${p.formal} (hosted by ${p.host}) didn't happen, and used ${p.credits} seat${p.credits === 1 ? "" : "s"} for it. The payout is on hold.`,
     cta: { href: listingBrowseUrl(p.listingId), label: "View listing" },
     note: `Settle each hold: npx convex run --prod credits:resolveDispute '{"holdId":"…","outcome":"refund"}' (or "payHost"). Listing ${p.listingId}.`,
   };

@@ -49,7 +49,7 @@ export function ListingMembership({ listing, viewerId, isPast }: Props) {
   function confirmLeave() {
     Alert.alert(
       "Leave this formal?",
-      "Your seat goes back to the host. Any credit you spent is refunded.",
+      "Your seat goes back to the host. Any seat you used comes back.",
       [
         { text: "Stay", style: "cancel" },
         {

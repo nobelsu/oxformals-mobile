@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, type ActionCtx } from "./_generated/server";
 import { deliverExpoPushMessages } from "./expoPush";
+import { outboundDisabled } from "./outboundSwitch";
 import {
   sendToSubscriptions,
   type WebPushSender,
@@ -13,6 +14,7 @@ import {
 
 /** The `web-push` sender, or null when VAPID keys aren't configured. */
 function webPushSender(): WebPushSender | null {
+  if (outboundDisabled()) return null;
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   if (!publicKey || !privateKey) return null;
@@ -42,7 +44,7 @@ async function sendWeb(
   if (subs.length === 0) return;
   const send = webPushSender();
   if (!send) {
-    console.warn("VAPID keys are not set; skipping web push");
+    if (!outboundDisabled()) console.warn("VAPID keys are not set; skipping web push");
     return;
   }
   const gone = await sendToSubscriptions(subs, JSON.stringify(message), send);

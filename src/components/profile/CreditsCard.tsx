@@ -5,7 +5,7 @@ import { useOxTheme } from "@/src/contexts/ThemeContext";
 import { useQuery } from "convex/react";
 import { StyleSheet, View } from "react-native";
 
-/** Your seat credits: what you can spend, what's held and what's on the way. */
+/** Your earned seats: what you can use, what's held and what's on the way. */
 export function CreditsCard() {
   const { colors } = useOxTheme();
   const credits = useQuery(api.credits.getMyCredits, {});
@@ -21,7 +21,7 @@ export function CreditsCard() {
       <View style={styles.row}>
         <OxText style={[styles.balance, { color: colors.ink }]}>{credits.balance}</OxText>
         <OxText style={[styles.label, { color: colors.ink }]}>
-          credit{credits.balance === 1 ? "" : "s"} to spend
+          seat{credits.balance === 1 ? "" : "s"} to use
         </OxText>
       </View>
       {pending.length > 0 ? (

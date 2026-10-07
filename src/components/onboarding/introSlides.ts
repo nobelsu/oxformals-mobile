@@ -14,12 +14,12 @@ export const INTRO_SLIDES: readonly IntroSlide[] = [
   },
   {
     title: "Find a seat",
-    body: "Swap a seat, spend a credit or pay the host.",
+    body: "Swap, pay the host, or use a seat you've earned.",
     illustration: "browse",
   },
   {
     title: "Go together",
-    body: "Bring friends. Host a guest to earn a credit.",
+    body: "Bring friends. Host a guest to earn a seat.",
     illustration: "chat",
   },
 ];

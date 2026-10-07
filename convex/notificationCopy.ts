@@ -164,26 +164,26 @@ export function renderNotification(n: NotificationView): RenderedNotification {
       break;
     case "credit_earned":
       if (n.data.reason === "referral") {
-        title = "Credit earned";
-        segments = [t("You earned 1 credit. "), b(who), t(" went to their first formal.")];
+        title = "Seat earned";
+        segments = [t("You earned a seat. "), b(who), t(" went to their first formal.")];
       } else if (n.data.pending) {
-        title = "Credit on the way";
+        title = "Seat on the way";
         segments = [
-          t(`You'll earn ${plural(count, "credit")} for hosting `),
+          t(`You'll earn ${plural(count, "seat")} for hosting `),
           b(who),
           t(" at "),
           b(college),
           t("."),
         ];
       } else {
-        title = "Credit earned";
-        segments = [t(`You earned ${plural(count, "credit")}.`)];
+        title = "Seat earned";
+        segments = [t(`You earned ${plural(count, "seat")}.`)];
       }
       url = FORMALS_URL;
       break;
     case "credit_paid_out":
-      title = "Credits paid";
-      segments = [t(`You earned ${plural(count, "credit")} for hosting at `), b(college), t(".")];
+      title = "Seats earned";
+      segments = [t(`You earned ${plural(count, "seat")} for hosting at `), b(college), t(".")];
       url = FORMALS_URL;
       break;
     case "formal_tomorrow":
@@ -240,7 +240,7 @@ export function notificationEmail(n: NotificationView): NotificationEmailCopy | 
     case "party_invite": {
       const tag = n.data.paysOwn
         ? n.data.method === "credit"
-          ? "You pay 1 credit"
+          ? "Uses 1 of your seats"
           : "You pay the host"
         : `${who} is covering you`;
       return {
