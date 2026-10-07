@@ -31,7 +31,7 @@ function isOxfordEmail(email: string): boolean {
     email.endsWith("@oxford.said.edu") ||
     email.endsWith("@said.ox.ac.uk") ||
     email.endsWith("@said.oxford.edu") ||
-    email.endsWith("@stanford.edu")
+    email.endsWith("@stanford.edu") || email.endsWith(".stanford.edu")
   );
 }
 
